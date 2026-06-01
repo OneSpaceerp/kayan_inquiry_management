@@ -1,0 +1,138 @@
+{
+  "actions": [],
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 1,
+  "field_order": [
+    "line_no",
+    "item_description",
+    "quantity",
+    "uom",
+    "column_break_item",
+    "customer_item_code",
+    "requested_brand",
+    "delivery_location",
+    "required_date",
+    "section_break_erp",
+    "item",
+    "match_confidence",
+    "column_break_erp2",
+    "matched_by_ai",
+    "manually_corrected",
+    "section_break_owner",
+    "application_engineer"
+  ],
+  "fields": [
+    {
+      "fieldname": "line_no",
+      "fieldtype": "Int",
+      "label": "Line No",
+      "in_list_view": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "item_description",
+      "fieldtype": "Text",
+      "label": "Item Description",
+      "reqd": 1,
+      "in_list_view": 1,
+      "columns": 3
+    },
+    {
+      "fieldname": "quantity",
+      "fieldtype": "Float",
+      "label": "Quantity",
+      "in_list_view": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "uom",
+      "fieldtype": "Data",
+      "label": "UOM",
+      "in_list_view": 1,
+      "columns": 1
+    },
+    {
+      "fieldname": "column_break_item",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "customer_item_code",
+      "fieldtype": "Data",
+      "label": "Customer Item Code"
+    },
+    {
+      "fieldname": "requested_brand",
+      "fieldtype": "Data",
+      "label": "Requested Brand"
+    },
+    {
+      "fieldname": "delivery_location",
+      "fieldtype": "Data",
+      "label": "Delivery Location"
+    },
+    {
+      "fieldname": "required_date",
+      "fieldtype": "Date",
+      "label": "Required Date"
+    },
+    {
+      "fieldname": "section_break_erp",
+      "fieldtype": "Section Break",
+      "label": "ERP Matching",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "item",
+      "fieldtype": "Link",
+      "label": "Matched Item",
+      "options": "Item",
+      "in_list_view": 1,
+      "columns": 2
+    },
+    {
+      "fieldname": "match_confidence",
+      "fieldtype": "Percent",
+      "label": "Match Confidence"
+    },
+    {
+      "fieldname": "column_break_erp2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "matched_by_ai",
+      "fieldtype": "Check",
+      "label": "Matched by AI",
+      "read_only": 1
+    },
+    {
+      "fieldname": "manually_corrected",
+      "fieldtype": "Check",
+      "label": "Manually Corrected"
+    },
+    {
+      "fieldname": "section_break_owner",
+      "fieldtype": "Section Break",
+      "label": "Assignment",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "application_engineer",
+      "fieldtype": "Link",
+      "label": "Application Engineer",
+      "options": "User"
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Line Item",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "ASC",
+  "states": []
+}

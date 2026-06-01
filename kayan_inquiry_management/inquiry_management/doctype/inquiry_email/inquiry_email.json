@@ -1,0 +1,30 @@
+{
+  "actions": [],
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 0,
+  "field_order": ["direction", "email_from", "email_to", "cc", "subject", "message_id", "thread_id", "received_on", "email_file"],
+  "fields": [
+    {"fieldname": "direction", "fieldtype": "Select", "label": "Direction", "options": "Incoming\nOutgoing", "reqd": 1, "in_list_view": 1, "columns": 1},
+    {"fieldname": "email_from", "fieldtype": "Data", "label": "From", "in_list_view": 1, "columns": 2},
+    {"fieldname": "email_to", "fieldtype": "Long Text", "label": "To"},
+    {"fieldname": "cc", "fieldtype": "Long Text", "label": "CC"},
+    {"fieldname": "subject", "fieldtype": "Data", "label": "Subject", "in_list_view": 1, "columns": 3},
+    {"fieldname": "message_id", "fieldtype": "Data", "label": "Message ID", "unique": 1},
+    {"fieldname": "thread_id", "fieldtype": "Data", "label": "Thread ID"},
+    {"fieldname": "received_on", "fieldtype": "Datetime", "label": "Received On", "in_list_view": 1, "columns": 2},
+    {"fieldname": "email_file", "fieldtype": "Link", "label": "Email File", "options": "File"}
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Email",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": []
+}

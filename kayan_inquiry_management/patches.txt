@@ -1,0 +1,4 @@
+[post_model_sync]
+# Patches will be added here as the app evolves.
+# Each line is a dotted path to a module with an execute() function.
+# Patches must be idempotent (safe to run more than once).

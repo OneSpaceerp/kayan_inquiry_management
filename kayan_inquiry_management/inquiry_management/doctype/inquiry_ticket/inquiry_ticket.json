@@ -1,0 +1,588 @@
+{
+  "actions": [],
+  "autoname": "naming_series:",
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "naming_rule": "By \"Naming Series\" field",
+  "field_order": [
+    "general_section",
+    "naming_series",
+    "status",
+    "priority",
+    "inquiry_type",
+    "column_break_general",
+    "company",
+    "source_mailbox",
+    "original_email_subject",
+    "received_date",
+    "customer_section",
+    "company_name",
+    "contact_person",
+    "contact_email",
+    "contact_phone",
+    "column_break_customer",
+    "customer",
+    "lead",
+    "opportunity",
+    "customer_match_method",
+    "ownership_section",
+    "sales_engineer",
+    "inquiry_coordinator",
+    "column_break_ownership",
+    "assigned_date",
+    "ai_section",
+    "ai_classification",
+    "ai_confidence",
+    "ai_summary",
+    "column_break_ai",
+    "ai_provider",
+    "ai_extracted_data",
+    "ai_needs_review",
+    "line_items_section",
+    "line_items",
+    "assignments_section",
+    "assignments",
+    "emails_section",
+    "emails",
+    "commercial_section",
+    "estimated_value",
+    "currency",
+    "column_break_commercial",
+    "tender_number",
+    "due_date",
+    "delivery_location",
+    "quotation_section",
+    "current_quotation",
+    "quotation_count",
+    "revision_count",
+    "column_break_quotation",
+    "sales_order",
+    "revisions_section",
+    "revisions",
+    "approvals_section",
+    "approvals",
+    "sla_section",
+    "sla_status",
+    "sla_assignment_deadline",
+    "column_break_sla",
+    "sla_technical_deadline",
+    "sla_quotation_deadline",
+    "outcome_section",
+    "lost_reason",
+    "cancellation_reason",
+    "column_break_outcome",
+    "outcome_remarks",
+    "status_history_section",
+    "status_history",
+    "amended_from"
+  ],
+  "fields": [
+    {
+      "fieldname": "general_section",
+      "fieldtype": "Section Break",
+      "label": "General Information"
+    },
+    {
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Series",
+      "options": "INQ-.YYYY.-.#####",
+      "default": "INQ-.YYYY.-.#####",
+      "reqd": 1,
+      "set_only_once": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "New\nPending Review\nAssigned to Sales Engineer\nAssigned to Application Engineer\nTechnical Review In Progress\nQuotation Preparation In Progress\nPending Approval\nApproved\nQuotation Sent\nCustomer Follow-Up\nRevision Requested\nWon\nLost\nCancelled",
+      "default": "New",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "read_only": 1,
+      "no_copy": 1
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Select",
+      "label": "Priority",
+      "options": "Low\nMedium\nHigh\nUrgent",
+      "default": "Medium",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "inquiry_type",
+      "fieldtype": "Select",
+      "label": "Inquiry Type",
+      "options": "\nRFQ\nQuotation Request\nTender\nBudget Request\nCommercial Inquiry\nRFP",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "column_break_general",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company",
+      "reqd": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "source_mailbox",
+      "fieldtype": "Data",
+      "label": "Source Mailbox",
+      "read_only": 1,
+      "description": "The mailbox that received the original email."
+    },
+    {
+      "fieldname": "original_email_subject",
+      "fieldtype": "Data",
+      "label": "Original Email Subject",
+      "read_only": 1,
+      "length": 500
+    },
+    {
+      "fieldname": "received_date",
+      "fieldtype": "Datetime",
+      "label": "Received Date",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "customer_section",
+      "fieldtype": "Section Break",
+      "label": "Customer Information"
+    },
+    {
+      "fieldname": "company_name",
+      "fieldtype": "Data",
+      "label": "Customer Company Name",
+      "description": "Company name as extracted from email (may differ from ERPNext Customer name)."
+    },
+    {
+      "fieldname": "contact_person",
+      "fieldtype": "Data",
+      "label": "Contact Person"
+    },
+    {
+      "fieldname": "contact_email",
+      "fieldtype": "Data",
+      "label": "Contact Email",
+      "options": "Email"
+    },
+    {
+      "fieldname": "contact_phone",
+      "fieldtype": "Data",
+      "label": "Contact Phone",
+      "options": "Phone"
+    },
+    {
+      "fieldname": "column_break_customer",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "customer",
+      "fieldtype": "Link",
+      "label": "Customer",
+      "options": "Customer",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "lead",
+      "fieldtype": "Link",
+      "label": "Lead",
+      "options": "Lead"
+    },
+    {
+      "fieldname": "opportunity",
+      "fieldtype": "Link",
+      "label": "Opportunity",
+      "options": "Opportunity"
+    },
+    {
+      "fieldname": "customer_match_method",
+      "fieldtype": "Select",
+      "label": "Customer Match Method",
+      "options": "\nCompany Name\nEmail Domain\nEmail Address\nManual",
+      "read_only": 1,
+      "description": "How the customer was matched (auto or manual)."
+    },
+    {
+      "fieldname": "ownership_section",
+      "fieldtype": "Section Break",
+      "label": "Ownership & Assignment"
+    },
+    {
+      "fieldname": "sales_engineer",
+      "fieldtype": "Link",
+      "label": "Sales Engineer",
+      "options": "User",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "inquiry_coordinator",
+      "fieldtype": "Link",
+      "label": "Inquiry Coordinator",
+      "options": "User"
+    },
+    {
+      "fieldname": "column_break_ownership",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "assigned_date",
+      "fieldtype": "Datetime",
+      "label": "Assigned Date",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ai_section",
+      "fieldtype": "Section Break",
+      "label": "AI Processing",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "ai_classification",
+      "fieldtype": "Data",
+      "label": "AI Classification",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ai_confidence",
+      "fieldtype": "Percent",
+      "label": "AI Confidence",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ai_summary",
+      "fieldtype": "Text",
+      "label": "AI Summary",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_ai",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "ai_provider",
+      "fieldtype": "Data",
+      "label": "AI Provider",
+      "read_only": 1
+    },
+    {
+      "fieldname": "ai_extracted_data",
+      "fieldtype": "Code",
+      "label": "AI Extracted Data (JSON)",
+      "read_only": 1,
+      "options": "JSON"
+    },
+    {
+      "fieldname": "ai_needs_review",
+      "fieldtype": "Check",
+      "label": "AI Needs Review",
+      "read_only": 1,
+      "description": "Set when AI confidence is below threshold."
+    },
+    {
+      "fieldname": "line_items_section",
+      "fieldtype": "Section Break",
+      "label": "Line Items"
+    },
+    {
+      "fieldname": "line_items",
+      "fieldtype": "Table",
+      "label": "Line Items",
+      "options": "Inquiry Line Item"
+    },
+    {
+      "fieldname": "assignments_section",
+      "fieldtype": "Section Break",
+      "label": "Assignments"
+    },
+    {
+      "fieldname": "assignments",
+      "fieldtype": "Table",
+      "label": "Assignments",
+      "options": "Inquiry Assignment"
+    },
+    {
+      "fieldname": "emails_section",
+      "fieldtype": "Section Break",
+      "label": "Emails",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "emails",
+      "fieldtype": "Table",
+      "label": "Emails",
+      "options": "Inquiry Email",
+      "read_only": 1
+    },
+    {
+      "fieldname": "commercial_section",
+      "fieldtype": "Section Break",
+      "label": "Commercial Details"
+    },
+    {
+      "fieldname": "estimated_value",
+      "fieldtype": "Currency",
+      "label": "Estimated Value",
+      "options": "currency"
+    },
+    {
+      "fieldname": "currency",
+      "fieldtype": "Link",
+      "label": "Currency",
+      "options": "Currency",
+      "default": "EGP"
+    },
+    {
+      "fieldname": "column_break_commercial",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "tender_number",
+      "fieldtype": "Data",
+      "label": "Tender Number"
+    },
+    {
+      "fieldname": "due_date",
+      "fieldtype": "Date",
+      "label": "Due Date"
+    },
+    {
+      "fieldname": "delivery_location",
+      "fieldtype": "Data",
+      "label": "Delivery Location"
+    },
+    {
+      "fieldname": "quotation_section",
+      "fieldtype": "Section Break",
+      "label": "Quotation & Sales"
+    },
+    {
+      "fieldname": "current_quotation",
+      "fieldtype": "Link",
+      "label": "Current Quotation",
+      "options": "Quotation",
+      "read_only": 1
+    },
+    {
+      "fieldname": "quotation_count",
+      "fieldtype": "Int",
+      "label": "Quotation Count",
+      "read_only": 1,
+      "default": "0"
+    },
+    {
+      "fieldname": "revision_count",
+      "fieldtype": "Int",
+      "label": "Revision Count",
+      "read_only": 1,
+      "default": "0"
+    },
+    {
+      "fieldname": "column_break_quotation",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sales_order",
+      "fieldtype": "Link",
+      "label": "Sales Order",
+      "options": "Sales Order",
+      "read_only": 1
+    },
+    {
+      "fieldname": "revisions_section",
+      "fieldtype": "Section Break",
+      "label": "Revisions",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "revisions",
+      "fieldtype": "Table",
+      "label": "Revisions",
+      "options": "Inquiry Revision"
+    },
+    {
+      "fieldname": "approvals_section",
+      "fieldtype": "Section Break",
+      "label": "Approvals",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "approvals",
+      "fieldtype": "Table",
+      "label": "Approvals",
+      "options": "Inquiry Approval"
+    },
+    {
+      "fieldname": "sla_section",
+      "fieldtype": "Section Break",
+      "label": "SLA Tracking"
+    },
+    {
+      "fieldname": "sla_status",
+      "fieldtype": "Select",
+      "label": "SLA Status",
+      "options": "Not Started\nActive\nMet\nBreached\nEscalated",
+      "default": "Not Started",
+      "read_only": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "sla_assignment_deadline",
+      "fieldtype": "Datetime",
+      "label": "Assignment SLA Deadline",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_sla",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "sla_technical_deadline",
+      "fieldtype": "Datetime",
+      "label": "Technical Review SLA Deadline",
+      "read_only": 1
+    },
+    {
+      "fieldname": "sla_quotation_deadline",
+      "fieldtype": "Datetime",
+      "label": "Quotation SLA Deadline",
+      "read_only": 1
+    },
+    {
+      "fieldname": "outcome_section",
+      "fieldtype": "Section Break",
+      "label": "Outcome",
+      "depends_on": "eval:doc.status=='Won' || doc.status=='Lost' || doc.status=='Cancelled'"
+    },
+    {
+      "fieldname": "lost_reason",
+      "fieldtype": "Link",
+      "label": "Lost Reason",
+      "options": "Inquiry Lost Reason",
+      "mandatory_depends_on": "eval:doc.status=='Lost'"
+    },
+    {
+      "fieldname": "cancellation_reason",
+      "fieldtype": "Small Text",
+      "label": "Cancellation Reason",
+      "mandatory_depends_on": "eval:doc.status=='Cancelled'"
+    },
+    {
+      "fieldname": "column_break_outcome",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "outcome_remarks",
+      "fieldtype": "Text",
+      "label": "Outcome Remarks"
+    },
+    {
+      "fieldname": "status_history_section",
+      "fieldtype": "Section Break",
+      "label": "Status History",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "status_history",
+      "fieldtype": "Table",
+      "label": "Status History",
+      "options": "Inquiry Status History",
+      "read_only": 1
+    },
+    {
+      "fieldname": "amended_from",
+      "fieldtype": "Link",
+      "label": "Amended From",
+      "options": "Inquiry Ticket",
+      "read_only": 1,
+      "no_copy": 1
+    }
+  ],
+  "links": [
+    {"link_doctype": "Quotation", "link_fieldname": "name", "group": "Quotations"},
+    {"link_doctype": "Sales Order", "link_fieldname": "name", "group": "Sales Orders"},
+    {"link_doctype": "AI Processing Log", "link_fieldname": "inquiry_ticket", "group": "AI Logs"},
+    {"link_doctype": "Audit Event", "link_fieldname": "entity_id", "group": "Audit Trail"}
+  ],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Ticket",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1, "write": 1, "create": 1, "delete": 1,
+      "report": 1, "export": 1, "import": 1
+    },
+    {
+      "role": "Sales Engineer",
+      "read": 1, "write": 1, "create": 1,
+      "report": 1, "export": 1
+    },
+    {
+      "role": "Application Engineer",
+      "read": 1, "write": 1,
+      "report": 1
+    },
+    {
+      "role": "Inquiry Coordinator",
+      "read": 1, "write": 1, "create": 1,
+      "report": 1, "export": 1
+    },
+    {
+      "role": "Sales Manager",
+      "read": 1, "write": 1, "create": 1, "delete": 1,
+      "report": 1, "export": 1
+    },
+    {
+      "role": "Commercial Director",
+      "read": 1, "write": 1,
+      "report": 1, "export": 1
+    },
+    {
+      "role": "General Manager",
+      "read": 1, "write": 1,
+      "report": 1, "export": 1
+    },
+    {
+      "role": "Department Manager",
+      "read": 1, "write": 1,
+      "report": 1, "export": 1
+    }
+  ],
+  "search_fields": "company_name,contact_person,contact_email,status,inquiry_type",
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [
+    {"title": "New", "color": "blue"},
+    {"title": "Pending Review", "color": "orange"},
+    {"title": "Assigned to Sales Engineer", "color": "cyan"},
+    {"title": "Assigned to Application Engineer", "color": "cyan"},
+    {"title": "Technical Review In Progress", "color": "yellow"},
+    {"title": "Quotation Preparation In Progress", "color": "yellow"},
+    {"title": "Pending Approval", "color": "orange"},
+    {"title": "Approved", "color": "green"},
+    {"title": "Quotation Sent", "color": "purple"},
+    {"title": "Customer Follow-Up", "color": "purple"},
+    {"title": "Revision Requested", "color": "orange"},
+    {"title": "Won", "color": "green"},
+    {"title": "Lost", "color": "red"},
+    {"title": "Cancelled", "color": "grey"}
+  ],
+  "title_field": "original_email_subject",
+  "show_title_field_in_link": 1,
+  "track_changes": 1
+}

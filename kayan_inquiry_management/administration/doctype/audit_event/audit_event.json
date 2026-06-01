@@ -1,0 +1,35 @@
+{
+  "actions": [],
+  "autoname": "format:AUD-{YYYY}-{#####}",
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": ["entity_type", "entity_id", "action", "column_break_1", "performed_by", "performed_on", "section_break_details", "details"],
+  "fields": [
+    {"fieldname": "entity_type", "fieldtype": "Data", "label": "Entity Type", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
+    {"fieldname": "entity_id", "fieldtype": "Data", "label": "Entity ID", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
+    {"fieldname": "action", "fieldtype": "Data", "label": "Action", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "performed_by", "fieldtype": "Data", "label": "Performed By", "reqd": 1, "in_list_view": 1, "in_standard_filter": 1, "read_only": 1},
+    {"fieldname": "performed_on", "fieldtype": "Datetime", "label": "Performed On", "reqd": 1, "in_list_view": 1, "read_only": 1},
+    {"fieldname": "section_break_details", "fieldtype": "Section Break", "label": "Details"},
+    {"fieldname": "details", "fieldtype": "Long Text", "label": "Details", "read_only": 1}
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Administration",
+  "name": "Audit Event",
+  "naming_rule": "Expression",
+  "owner": "Administrator",
+  "permissions": [
+    {"role": "System Manager", "read": 1, "report": 1, "export": 1},
+    {"role": "Sales Manager", "read": 1, "report": 1},
+    {"role": "General Manager", "read": 1, "report": 1}
+  ],
+  "in_create": 1,
+  "sort_field": "performed_on",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 0
+}

@@ -1,0 +1,60 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:email_domain",
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "email_domain",
+    "company",
+    "active"
+  ],
+  "fields": [
+    {
+      "fieldname": "email_domain",
+      "fieldtype": "Data",
+      "label": "Email Domain",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "description": "The email domain to map (e.g. company.com)"
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "label": "Active",
+      "default": "1",
+      "in_list_view": 1
+    }
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Administration",
+  "name": "Domain Mapping",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ],
+  "quick_entry": 1,
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

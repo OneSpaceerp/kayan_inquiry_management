@@ -1,0 +1,26 @@
+{
+  "actions": [],
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 0,
+  "field_order": ["old_status", "new_status", "changed_by", "changed_on", "remarks"],
+  "fields": [
+    {"fieldname": "old_status", "fieldtype": "Data", "label": "Previous Status", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "new_status", "fieldtype": "Data", "label": "New Status", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "changed_by", "fieldtype": "Link", "label": "Changed By", "options": "User", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "changed_on", "fieldtype": "Datetime", "label": "Changed On", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "remarks", "fieldtype": "Text", "label": "Remarks", "in_list_view": 1, "columns": 2}
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Status History",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": []
+}

@@ -1,0 +1,26 @@
+{
+  "actions": [],
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 1,
+  "field_order": ["revision_no", "revision_reason", "requested_by", "requested_on", "status"],
+  "fields": [
+    {"fieldname": "revision_no", "fieldtype": "Int", "label": "Revision No", "reqd": 1, "in_list_view": 1, "columns": 1},
+    {"fieldname": "revision_reason", "fieldtype": "Text", "label": "Revision Reason", "reqd": 1, "in_list_view": 1, "columns": 4},
+    {"fieldname": "requested_by", "fieldtype": "Data", "label": "Requested By", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "requested_on", "fieldtype": "Datetime", "label": "Requested On", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Requested\nIn Progress\nCompleted\nCancelled", "default": "Requested", "in_list_view": 1, "columns": 1}
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Revision",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "ASC",
+  "states": []
+}

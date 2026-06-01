@@ -1,0 +1,26 @@
+{
+  "actions": [],
+  "creation": "2026-06-02 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 1,
+  "field_order": ["user", "role_type", "assigned_by", "assigned_on", "active"],
+  "fields": [
+    {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "reqd": 1, "in_list_view": 1, "columns": 3},
+    {"fieldname": "role_type", "fieldtype": "Select", "label": "Role Type", "options": "Application Engineer\nReviewer\nApprover", "reqd": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "assigned_by", "fieldtype": "Link", "label": "Assigned By", "options": "User", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "assigned_on", "fieldtype": "Datetime", "label": "Assigned On", "read_only": 1, "in_list_view": 1, "columns": 2},
+    {"fieldname": "active", "fieldtype": "Check", "label": "Active", "default": "1", "in_list_view": 1, "columns": 1}
+  ],
+  "links": [],
+  "modified": "2026-06-02 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Inquiry Management",
+  "name": "Inquiry Assignment",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "creation",
+  "sort_order": "ASC",
+  "states": []
+}

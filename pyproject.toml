@@ -1,0 +1,16 @@
+[project]
+name = "kayan_inquiry_management"
+authors = [{ name = "Kayan Automation", email = "dev@kayan.com" }]
+description = "AI-Powered Email Inquiry Management & Quotation Workflow for ERPNext v16"
+requires-python = ">=3.14"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = []          # ONLY PyPI packages here, never frappe/erpnext
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=16.0.0,<17.0.0"
+erpnext = ">=16.0.0,<17.0.0"
