@@ -28,8 +28,9 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
-        "authentication": "none",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -41,23 +42,29 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { contents: [ { parts: [ { text: 'You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: \\'RFQ\\', \\'Tender\\', \\'Quotation Request\\', \\'Budget Request\\', \\'Commercial Inquiry\\', \\'RFP\\', or \\'Non Inquiry\\' if it\\'s spam, marketing, personal, or administrative.\\n\\nEmail Content:\\nSubject: ' + ($('IMAP Email Trigger').item.json.subject || '') + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '') } ] } ], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'object', properties: { classification: { type: 'string', enum: ['RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', 'Non Inquiry'] }, confidence: { type: 'integer' }, reason: { type: 'string' } }, required: ['classification', 'confidence', 'reason'] } } } }}"
+        "jsonBody": "={\n  \"model\": \"google/gemini-2.5-flash:free\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\\nReturn ONLY a JSON object containing the following keys:\\n- classification (string)\\n- confidence (number between 0 and 100)\\n- reason (string)\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}\n    }\n  ],\n  \"response_format\": {\n    \"type\": \"json_object\"\n  }\n}"
       },
       "id": "96c342f0-bf48-4395-88de-e91b29a24002",
-      "name": "Classify with Gemini",
+      "name": "Classify with OpenRouter",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
         480,
         300
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
       "retryOnFail": true,
       "maxTries": 5,
       "waitBetweenTries": 5000
     },
     {
       "parameters": {
-        "jsCode": "let responseText = $json.candidates[0].content.parts[0].text.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst trigger = $('IMAP Email Trigger').first().json;\n\nreturn [{\n  json: {\n    email_id: trigger.messageId,\n    to: trigger.to?.value?.[0]?.address || '',\n    from: trigger.from?.value?.[0]?.address || '',\n    subject: trigger.subject,\n    body: trigger.text || '',\n    threadId: trigger.threadId || '',\n    attachments: trigger.attachments || [],\n    classification: parsed.classification,\n    confidence: parsed.confidence,\n    reason: parsed.reason\n  }\n}];"
+        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst trigger = $('IMAP Email Trigger').first().json;\n\nreturn [{\n  json: {\n    email_id: trigger.messageId,\n    to: trigger.to?.value?.[0]?.address || '',\n    from: trigger.from?.value?.[0]?.address || '',\n    subject: trigger.subject,\n    body: trigger.text || '',\n    threadId: trigger.threadId || '',\n    attachments: trigger.attachments || [],\n    classification: parsed.classification,\n    confidence: parsed.confidence,\n    reason: parsed.reason\n  }\n}];"
       },
       "id": "86bc320f-bcf0-42ba-b3f0-466bc0092c42",
       "name": "Parse AI Output",
@@ -199,14 +206,14 @@
       "main": [
         [
           {
-            "node": "Classify with Gemini",
+            "node": "Classify with OpenRouter",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Classify with Gemini": {
+    "Classify with OpenRouter": {
       "main": [
         [
           {

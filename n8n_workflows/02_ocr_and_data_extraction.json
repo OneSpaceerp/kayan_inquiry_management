@@ -106,8 +106,9 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
-        "authentication": "none",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -119,23 +120,29 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { contents: [ { role: 'user', parts: [ { text: 'Extract all tabular data, line items, lists, and text from this image precisely. Do not summarize or explain.' }, { inlineData: { mimeType: $json.mimeType, data: $json.base64 } } ] } ] } }}"
+        "jsonBody": "={{ { model: 'google/gemini-2.5-flash:free', messages: [ { role: 'user', content: [ { type: 'text', text: 'Extract all tabular data, line items, lists, and text from this image precisely. Do not summarize or explain.' }, { type: 'image_url', image_url: { url: 'data:' + $json.mimeType + ';base64,' + $json.base64 } } ] } ] } }}"
       },
       "id": "31acdb89-bf8c-4a3d-bcf2-32a10cb23bf3",
-      "name": "Gemini Image OCR API",
+      "name": "OpenRouter Image OCR API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
         1120,
         100
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
       "retryOnFail": true,
       "maxTries": 5,
       "waitBetweenTries": 5000
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    text: $json.candidates[0].content.parts[0].text,\n    filename: $('Split Attachments Loop').first().json.filename || 'image.png'\n  }\n}];"
+        "jsCode": "return [{\n  json: {\n    text: $json.choices[0].message.content,\n    filename: $('Split Attachments Loop').first().json.filename || 'image.png'\n  }\n}];"
       },
       "id": "f5acbe23-a1bf-4bdf-84ff-bcfde90a2cfc",
       "name": "Parse Image OCR Output",
@@ -205,8 +212,9 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
-        "authentication": "none",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -218,23 +226,29 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { contents: [ { parts: [ { text: 'You are an AI assistant that extracts customer details and RFQ items from email and attachment text. Extract the details precisely.\\n\\nEmail Subject: ' + ($json.subject || '') + '\\nFrom: ' + ($json.from || '') + '\\nBody: ' + ($json.body || '') + '\\n\\n--- Extracted Document Text ---\\n' + ($json.full_extracted_text || '') } ] } ], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'object', properties: { customer_name: { type: 'string' }, company_name: { type: 'string' }, phone: { type: 'string' }, delivery_location: { type: 'string' }, due_date: { type: 'string', description: 'due date in format YYYY-MM-DD' }, tender_number: { type: 'string' }, items: { type: 'array', items: { type: 'object', properties: { description: { type: 'string' }, quantity: { type: 'number' }, uom: { type: 'string' } }, required: ['description'] } } }, required: ['customer_name', 'company_name', 'items'] } } } }}"
+        "jsonBody": "={{ { model: 'google/gemini-2.5-flash:free', messages: [ { role: 'system', content: 'You are an AI assistant that extracts customer details and RFQ items from email and attachment text. Extract the details precisely.\\nReturn ONLY a JSON object containing the following keys:\\n- customer_name (string)\\n- company_name (string)\\n- phone (string)\\n- delivery_location (string)\\n- due_date (string, format YYYY-MM-DD)\\n- tender_number (string)\\n- items (array of objects, each containing: description (string, required), quantity (number), uom (string))' }, { role: 'user', content: 'Email Subject: ' + ($json.subject || '') + '\\nFrom: ' + ($json.from || '') + '\\nBody: ' + ($json.body || '') + '\\n\\n--- Extracted Document Text ---\\n' + ($json.full_extracted_text || '') } ], response_format: { type: 'json_object' } } }}"
       },
       "id": "83fa0cb2-fb3d-4c3e-8b1e-abcf874acbef",
-      "name": "Extract Metadata and Items Gemini API",
+      "name": "Extract Metadata and Items OpenRouter API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [
         2000,
         280
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
       "retryOnFail": true,
       "maxTries": 5,
       "waitBetweenTries": 5000
     },
     {
       "parameters": {
-        "jsCode": "let responseText = $json.candidates[0].content.parts[0].text.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst payload = $('Prepare LLM Payload').first().json;\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    threadId: payload.threadId || '',\n    attachments: payload.attachments || [],\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  }\n}];"
+        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst payload = $('Prepare LLM Payload').first().json;\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    threadId: payload.threadId || '',\n    attachments: payload.attachments || [],\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  }\n}];"
       },
       "id": "83cf0cb2-fb4d-4d3e-8b2e-abcd874bcbef",
       "name": "Parse Extraction Output",
@@ -324,14 +338,14 @@
       "main": [
         [
           {
-            "node": "Gemini Image OCR API",
+            "node": "OpenRouter Image OCR API",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Gemini Image OCR API": {
+    "OpenRouter Image OCR API": {
       "main": [
         [
           {
@@ -390,14 +404,14 @@
       "main": [
         [
           {
-            "node": "Extract Metadata and Items Gemini API",
+            "node": "Extract Metadata and Items OpenRouter API",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Extract Metadata and Items Gemini API": {
+    "Extract Metadata and Items OpenRouter API": {
       "main": [
         [
           {
