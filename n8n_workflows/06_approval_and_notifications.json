@@ -1,0 +1,595 @@
+{
+  "name": "06_Approval_and_Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "webhook/pending-approval",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9006",
+      "name": "Pending Approval Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = $json.body || {};\nconst estValue = t.estimated_value || 0;\nlet levels = [];\n\nif (estValue < 50000) {\n  levels = [\"Sales Manager\"];\n} else if (estValue < 200000) {\n  levels = [\"Sales Manager\", \"Commercial Director\"];\n} else {\n  levels = [\"Sales Manager\", \"Commercial Director\", \"General Manager\"];\n}\n\nreturn [{\n  json: {\n    inquiry: t.name,\n    company: t.company,\n    estimated_value: estValue,\n    sales_engineer: t.sales_engineer,\n    approval_levels: levels,\n    current_level_index: 0,\n    active_role: levels[0]\n  }\n}];"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef85",
+      "name": "Determine Approval Chain",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/approval/request",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.inquiry}}\",\n  \"role\": \"{{$json.active_role}}\",\n  \"message\": \"Please approve the quotation for {{$json.inquiry}} totaling EGP {{$json.estimated_value}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc7",
+      "name": "Register Approval Request API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        540,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "no-reply@kayan-eg.net",
+        "toEmail": "=approver-{{$json.active_role.toLowerCase().replace(' ', '-')}}@kayan-eg.net",
+        "subject": "=Approval Required for Quotation Inquiry: {{$json.inquiry}}",
+        "htmlFormat": true,
+        "html": "=<h3>Quotation Approval Request</h3>\n<p>Dear Approver,</p>\n<p>An inquiry is pending your approval:</p>\n<ul>\n  <li><strong>Inquiry Number:</strong> {{$json.inquiry}}</li>\n  <li><strong>Estimated Value:</strong> EGP {{$json.estimated_value}}</li>\n  <li><strong>Sales Engineer:</strong> {{$json.sales_engineer}}</li>\n  <li><strong>Required Level:</strong> {{$json.active_role}}</li>\n</ul>\n<p>\n  <a href=\"https://n8n-domain/webhook/approve?inquiry={{$json.inquiry}}&level={{$json.current_level_index}}&role={{encodeURIComponent($json.active_role)}}\" style=\"background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;\">Approve</a>\n  &nbsp;&nbsp;\n  <a href=\"https://n8n-domain/webhook/reject?inquiry={{$json.inquiry}}&level={{$json.current_level_index}}&role={{encodeURIComponent($json.active_role)}}\" style=\"background-color:#f44336;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;\">Reject</a>\n</p>",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc8",
+      "name": "Send Approval Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "webhook/approve",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9007",
+      "name": "Approve Webhook Listener",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/approval/approve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.query.inquiry}}\",\n  \"role\": \"{{$json.query.role}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc9",
+      "name": "Approve in ERPNext API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        500
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://kayan-eg.net/api/resource/Inquiry Ticket/{{$('Approve Webhook Listener').first().json.query.inquiry}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd0",
+      "name": "Fetch Latest Inquiry Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        520,
+        500
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentLevel = parseInt($('Approve Webhook Listener').first().json.query.level, 10);\nconst inquiry = $json.data || {};\nconst estValue = inquiry.estimated_value || 0;\nlet levels = [];\n\nif (estValue < 50000) {\n  levels = [\"Sales Manager\"];\n} else if (estValue < 200000) {\n  levels = [\"Sales Manager\", \"Commercial Director\"];\n} else {\n  levels = [\"Sales Manager\", \"Commercial Director\", \"General Manager\"];\n}\n\nconst nextLevelIndex = currentLevel + 1;\nconst hasNext = nextLevelIndex < levels.length;\n\nreturn [{\n  json: {\n    inquiry: inquiry.name,\n    company: inquiry.company,\n    estimated_value: estValue,\n    sales_engineer: inquiry.sales_engineer,\n    approval_levels: levels,\n    current_level_index: nextLevelIndex,\n    active_role: hasNext ? levels[nextLevelIndex] : '',\n    has_next: hasNext\n  }\n}];"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef86",
+      "name": "Check Next Level",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-next",
+              "leftValue": "={{$json.has_next}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb5",
+      "name": "Has Next Level?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/inquiry/change-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.inquiry}}\",\n  \"status\": \"Approved\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd1",
+      "name": "Set Ticket Approved API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1200,
+        560
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/method/kayan_inquiry_management.kayan_inquiry_management.api.create_erpnext_quotation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry_name\": \"{{$('Set Ticket Approved API').first().json.inquiry}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd2",
+      "name": "Generate ERPNext Quotation API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1420,
+        560
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/notifications/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$('Set Ticket Approved API').first().json.inquiry}}\",\n  \"type\": \"Email\",\n  \"recipient\": \"{{$('Check Next Level').first().json.sales_engineer}}\",\n  \"template\": \"quotation_approved_and_generated\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd3",
+      "name": "Notify Sales Engineer Approved API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1640,
+        560
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "webhook/reject",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9008",
+      "name": "Reject Webhook Listener",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        740
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/approval/reject",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.query.inquiry}}\",\n  \"role\": \"{{$json.query.role}}\",\n  \"comments\": \"{{$json.query.comments || 'Rejected via email'}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd4",
+      "name": "Reject in ERPNext API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        740
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/inquiry/change-status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.inquiry}}\",\n  \"status\": \"Quotation Preparation In Progress\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd5",
+      "name": "Reset Status to Prep API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        540,
+        740
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/notifications/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$('Reset Status to Prep API').first().json.inquiry}}\",\n  \"type\": \"Email\",\n  \"recipient_role\": \"Application Engineer\",\n  \"template\": \"quotation_approval_rejected\",\n  \"comments\": \"{{$('Reject Webhook Listener').first().json.query.comments || 'Rejected via email'}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bd6",
+      "name": "Notify AE Rejection API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        760,
+        740
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Pending Approval Webhook": {
+      "main": [
+        [
+          {
+            "node": "Determine Approval Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Determine Approval Chain": {
+      "main": [
+        [
+          {
+            "node": "Register Approval Request API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Approval Request API": {
+      "main": [
+        [
+          {
+            "node": "Send Approval Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Webhook Listener": {
+      "main": [
+        [
+          {
+            "node": "Approve in ERPNext API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve in ERPNext API": {
+      "main": [
+        [
+          {
+            "node": "Fetch Latest Inquiry Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Latest Inquiry Details": {
+      "main": [
+        [
+          {
+            "node": "Check Next Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Next Level": {
+      "main": [
+        [
+          {
+            "node": "Has Next Level?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Next Level?": {
+      "main": [
+        [
+          {
+            "node": "Register Approval Request API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Ticket Approved API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Ticket Approved API": {
+      "main": [
+        [
+          {
+            "node": "Generate ERPNext Quotation API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate ERPNext Quotation API": {
+      "main": [
+        [
+          {
+            "node": "Notify Sales Engineer Approved API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Webhook Listener": {
+      "main": [
+        [
+          {
+            "node": "Reject in ERPNext API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject in ERPNext API": {
+      "main": [
+        [
+          {
+            "node": "Reset Status to Prep API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Status to Prep API": {
+      "main": [
+        [
+          {
+            "node": "Notify AE Rejection API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

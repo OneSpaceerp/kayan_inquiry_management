@@ -1,0 +1,225 @@
+{
+  "name": "05_SLA_Breach_Escalation",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "value": [
+            {
+              "mode": "everyHour"
+            }
+          ]
+        }
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9005",
+      "name": "Hourly Cron Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        100,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://kayan-eg.net/api/resource/Inquiry Ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filters",
+              "value": "=[[\"Inquiry Ticket\", \"status\", \"not in\", [\"Won\", \"Lost\", \"Cancelled\", \"Approved\", \"Quotation Sent\"]], [\"Inquiry Ticket\", \"sla_status\", \"in\", [\"Active\", \"Not Started\"]]]"
+            },
+            {
+              "name": "fields",
+              "value": "[\"name\", \"status\", \"sla_status\", \"sla_assignment_deadline\", \"sla_technical_deadline\", \"sla_quotation_deadline\", \"sales_engineer\", \"company\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc4",
+      "name": "Query Active Tickets API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst breachedTickets = [];\nconst tickets = $json.data || [];\n\nfor (const t of tickets) {\n  let isBreached = false;\n  let breachType = \"\";\n  let deadline = null;\n\n  if ([\"New\", \"Pending Review\"].includes(t.status) && t.sla_assignment_deadline) {\n    deadline = new Date(t.sla_assignment_deadline);\n    if (now > deadline) {\n      isBreached = true;\n      breachType = \"Assignment SLA\";\n    }\n  } else if ([\"Assigned to Sales Engineer\", \"Assigned to Application Engineer\", \"Technical Review In Progress\"].includes(t.status) && t.sla_technical_deadline) {\n    deadline = new Date(t.sla_technical_deadline);\n    if (now > deadline) {\n      isBreached = true;\n      breachType = \"Technical Review SLA\";\n    }\n  } else if (t.status === \"Quotation Preparation In Progress\" && t.sla_quotation_deadline) {\n    deadline = new Date(t.sla_quotation_deadline);\n    if (now > deadline) {\n      isBreached = true;\n      breachType = \"Quotation Preparation SLA\";\n    }\n  }\n\n  if (isBreached) {\n    breachedTickets.push({\n      json: {\n        name: t.name,\n        status: t.status,\n        breach_type: breachType,\n        deadline: deadline.toISOString(),\n        sales_engineer: t.sales_engineer,\n        company: t.company\n      }\n    });\n  }\n}\n\nreturn breachedTickets;"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef84",
+      "name": "Evaluate Deadlines",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitBy": "Evaluate Deadlines",
+        "options": {}
+      },
+      "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab4",
+      "name": "Split Breached Tickets",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3.1,
+      "position": [
+        780,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/notifications/escalate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$json.name}}\",\n  \"breach_type\": \"{{$json.breach_type}}\",\n  \"escalation_level\": \"Direct Manager\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc5",
+      "name": "Send Escalation API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        980,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://kayan-eg.net/api/resource/Inquiry Ticket/{{$json.name}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"sla_status\": \"Escalated\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc6",
+      "name": "Mark Ticket as Escalated API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1180,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Hourly Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query Active Tickets API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Active Tickets API": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Deadlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Deadlines": {
+      "main": [
+        [
+          {
+            "node": "Split Breached Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Breached Tickets": {
+      "main": [
+        [
+          {
+            "node": "Send Escalation API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Escalation API": {
+      "main": [
+        [
+          {
+            "node": "Mark Ticket as Escalated API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

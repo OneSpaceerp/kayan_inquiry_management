@@ -1,0 +1,680 @@
+{
+  "name": "03_Customer_Matching_and_Ticket_Creation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a9dbf120-cf9c-4932-b2a8-fbe0ab7201bd",
+      "name": "Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://kayan-eg.net/api/resource/Customer",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filters",
+              "value": "= [[\"Customer\", \"customer_name\", \"like\", \"%%{{ $json.company_name }}%%\"]]"
+            },
+            {
+              "name": "fields",
+              "value": "[\"name\", \"customer_name\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e9dbf120-cf9c-4932-b2a8-fbe0ab7201be",
+      "name": "Search ERPNext Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        300,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-customer-found",
+              "leftValue": "={{$json.data && $json.data.length > 0}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb3",
+      "name": "Customer Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/resource/Opportunity",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"opportunity_from\": \"Customer\",\n  \"party_name\": \"{{$json.data[0].name}}\",\n  \"company\": \"Kayan Eg\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb4",
+      "name": "Create Opportunity for Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://kayan-eg.net/api/resource/Lead",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filters",
+              "value": "=[[\"Lead\", \"email_id\", \"=\", \"{{$('Execute Trigger').first().json.from}}\"]]"
+            },
+            {
+              "name": "fields",
+              "value": "[\"name\", \"lead_name\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb5",
+      "name": "Search Lead API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        780,
+        380
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-lead-found",
+              "leftValue": "={{$json.data && $json.data.length > 0}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb4",
+      "name": "Lead Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        980,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/resource/Lead",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_name\": \"{{$('Execute Trigger').first().json.customer_name || 'Inquiry Contact'}}\",\n  \"company_name\": \"{{$('Execute Trigger').first().json.company_name || 'Individual'}}\",\n  \"email_id\": \"{{$('Execute Trigger').first().json.from}}\",\n  \"phone\": \"{{$('Execute Trigger').first().json.phone}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb6",
+      "name": "Create New Lead API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1200,
+        340
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/resource/Opportunity",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"opportunity_from\": \"Lead\",\n  \"party_name\": \"{{$json.data ? $json.data[0].name : $json.name}}\",\n  \"company\": \"Kayan Eg\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb7",
+      "name": "Create Opportunity for Lead API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1440,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "position",
+        "options": {}
+      },
+      "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bee",
+      "name": "Merge Matching Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1700,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Execute Trigger').first().json;\nlet customer = \"\";\nlet lead = \"\";\nlet opportunity = \"\";\n\ntry {\n  const customerOpp = $('Create Opportunity for Customer').first();\n  if (customerOpp) {\n    opportunity = customerOpp.json.name;\n    customer = customerOpp.json.party_name;\n  }\n} catch(e) {}\n\ntry {\n  const leadOpp = $('Create Opportunity for Lead API').first();\n  if (leadOpp) {\n    opportunity = leadOpp.json.name;\n    lead = leadOpp.json.party_name;\n  }\n} catch(e) {}\n\nconst formattedItems = (trigger.items || []).map(item => ({\n  item_description: item.description,\n  quantity: item.quantity,\n  uom: item.uom || 'Nos'\n}));\n\nreturn [{\n  json: {\n    inquiry_type: \"RFQ\",\n    customer: customer || undefined,\n    lead: lead || undefined,\n    opportunity: opportunity,\n    company_name: trigger.company_name,\n    contact_person: trigger.customer_name,\n    contact_phone: trigger.phone,\n    contact_email: trigger.from,\n    delivery_location: trigger.delivery_location,\n    due_date: trigger.due_date,\n    tender_number: trigger.tender_number,\n    source_mailbox: trigger.source_mailbox,\n    original_email_subject: trigger.subject,\n    status: \"Assigned to Sales Engineer\",\n    line_items: formattedItems,\n    attachments: trigger.attachments || []\n  }\n}];"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef88",
+      "name": "Prepare Inquiry Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/resource/Inquiry Ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry_type\": \"{{$json.inquiry_type}}\",\n  \"customer\": \"{{$json.customer || ''}}\",\n  \"lead\": \"{{$json.lead || ''}}\",\n  \"opportunity\": \"{{$json.opportunity}}\",\n  \"company_name\": \"{{$json.company_name}}\",\n  \"contact_person\": \"{{$json.contact_person}}\",\n  \"contact_phone\": \"{{$json.contact_phone}}\",\n  \"contact_email\": \"{{$json.contact_email}}\",\n  \"delivery_location\": \"{{$json.delivery_location || ''}}\",\n  \"due_date\": \"{{$json.due_date || ''}}\",\n  \"tender_number\": \"{{$json.tender_number || ''}}\",\n  \"source_mailbox\": \"{{$json.source_mailbox}}\",\n  \"original_email_subject\": \"{{$json.original_email_subject}}\",\n  \"status\": \"Assigned to Sales Engineer\",\n  \"line_items\": {{$json.line_items}}\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc8",
+      "name": "Create Inquiry Ticket API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2140,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-attachments",
+              "leftValue": "={{$('Prepare Inquiry Payload').first().json.attachments.length}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "greaterThan"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "93b2df0f-c3f2-4934-8be0-b98a1293a9d4",
+      "name": "Has Attachments To Upload?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2360,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitBy": "attachments",
+        "options": {}
+      },
+      "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab4",
+      "name": "Split Files for Upload",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3.1,
+      "position": [
+        2560,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/method/upload_file",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/form-data"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyFormat": "multipart-form-data",
+        "formData": {
+          "parameters": [
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "attachment"
+            },
+            {
+              "name": "doctype",
+              "value": "Inquiry Ticket"
+            },
+            {
+              "name": "docname",
+              "value": "={{$('Create Inquiry Ticket API').first().json.name}}"
+            },
+            {
+              "name": "is_private",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da8f121d-a3df-40be-b4db-ef7eab3c4b94",
+      "name": "Upload File to ERPNext API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2760,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "position",
+        "options": {}
+      },
+      "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bef",
+      "name": "Merge Upload Outputs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        3000,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/notifications/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$('Create Inquiry Ticket API').first().json.name}}\",\n  \"type\": \"Email\",\n  \"recipient_role\": \"Sales Engineer\",\n  \"template\": \"new_inquiry_assigned\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc0",
+      "name": "Notify Sales Engineer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        3220,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search ERPNext Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search ERPNext Customer": {
+      "main": [
+        [
+          {
+            "node": "Customer Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Found?": {
+      "main": [
+        [
+          {
+            "node": "Create Opportunity for Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Lead API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Opportunity for Customer": {
+      "main": [
+        [
+          {
+            "node": "Merge Matching Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Lead API": {
+      "main": [
+        [
+          {
+            "node": "Lead Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Found?": {
+      "main": [
+        [
+          {
+            "node": "Create Opportunity for Lead API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create New Lead API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create New Lead API": {
+      "main": [
+        [
+          {
+            "node": "Create Opportunity for Lead API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Opportunity for Lead API": {
+      "main": [
+        [
+          {
+            "node": "Merge Matching Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Matching Outputs": {
+      "main": [
+        [
+          {
+            "node": "Prepare Inquiry Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Inquiry Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Inquiry Ticket API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Inquiry Ticket API": {
+      "main": [
+        [
+          {
+            "node": "Has Attachments To Upload?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachments To Upload?": {
+      "main": [
+        [
+          {
+            "node": "Split Files for Upload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Upload Outputs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Split Files for Upload": {
+      "main": [
+        [
+          {
+            "node": "Upload File to ERPNext API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload File to ERPNext API": {
+      "main": [
+        [
+          {
+            "node": "Merge Upload Outputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Upload Outputs": {
+      "main": [
+        [
+          {
+            "node": "Notify Sales Engineer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

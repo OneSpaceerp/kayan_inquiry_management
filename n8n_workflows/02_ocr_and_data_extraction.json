@@ -1,0 +1,421 @@
+{
+  "name": "02_OCR_and_Data_Extraction",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e30f1d0b-aa8c-4934-bc2c-e18ac1936c5c",
+      "name": "Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-attachments",
+              "leftValue": "={{$json.attachments ? Object.keys($json.attachments).length : 0}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "greaterThan"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "93b2df0f-c3f2-4934-8be0-b98a1293a9d2",
+      "name": "Has Attachments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        280,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitBy": "attachments",
+        "options": {}
+      },
+      "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab1",
+      "name": "Split Attachments Loop",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3.1,
+      "position": [
+        500,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-is-image",
+              "leftValue": "={{$json.mimeType}}",
+              "rightValue": "image",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "da8f121d-a3df-40be-b4db-ef7eab3c4b93",
+      "name": "Is Image File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nfor (const item of items) {\n  if (item.binary && item.binary.attachment) {\n    item.json.base64 = item.binary.attachment.data;\n    item.json.mimeType = item.binary.attachment.mimeType;\n  }\n}\nreturn items;"
+      },
+      "id": "fe5cbe0c-cbef-49ac-92fe-a8bf327ab3f0",
+      "name": "Convert Image to Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBj6arQ4n1J_fyzlcyFV9I41qJUxArni78",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { contents: [ { role: 'user', parts: [ { text: 'Extract all tabular data, line items, lists, and text from this image precisely. Do not summarize or explain.' }, { inlineData: { mimeType: $json.mimeType, data: $json.base64 } } ] } ] } }}"
+      },
+      "id": "31acdb89-bf8c-4a3d-bcf2-32a10cb23bf3",
+      "name": "Gemini Image OCR API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    text: $json.candidates[0].content.parts[0].text,\n    filename: $('Split Attachments Loop').first().json.filename || 'image.png'\n  }\n}];"
+      },
+      "id": "f5acbe23-a1bf-4bdf-84ff-bcfde90a2cfc",
+      "name": "Parse Image OCR Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "readKey",
+        "binaryPropertyName": "attachment",
+        "options": {}
+      },
+      "id": "a9dbf120-cf9c-4932-b2a8-fbe0ab7201bd",
+      "name": "Extract Text from Doc Node",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        920,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    text: $json.text || '',\n    filename: $('Split Attachments Loop').first().json.filename || 'document.pdf'\n  }\n}];"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef87",
+      "name": "Format Document Text Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "position",
+        "options": {}
+      },
+      "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bee",
+      "name": "Merge Extracted Text",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1560,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const trigger = $('Execute Trigger').first().json;\nlet textBlocks = [];\n\ntry {\n  const merged = $('Merge Extracted Text').all();\n  for (const block of merged) {\n    if (block.json.text) {\n      textBlocks.push(`=== File: ${block.json.filename} ===\\n${block.json.text}`);\n    }\n  }\n} catch(e) {}\n\nreturn [{\n  json: {\n    email_id: trigger.email_id,\n    source_mailbox: trigger.to,\n    from: trigger.from,\n    subject: trigger.subject,\n    body: trigger.body || '',\n    threadId: trigger.threadId || '',\n    attachments: trigger.attachments || [],\n    full_extracted_text: textBlocks.join('\\n\\n')\n  }\n}];"
+      },
+      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef82",
+      "name": "Prepare LLM Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBj6arQ4n1J_fyzlcyFV9I41qJUxArni78",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { contents: [ { parts: [ { text: 'You are an AI assistant that extracts customer details and RFQ items from email and attachment text. Extract the details precisely.\\n\\nEmail Subject: ' + ($json.subject || '') + '\\nFrom: ' + ($json.from || '') + '\\nBody: ' + ($json.body || '') + '\\n\\n--- Extracted Document Text ---\\n' + ($json.full_extracted_text || '') } ] } ], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'object', properties: { customer_name: { type: 'string' }, company_name: { type: 'string' }, phone: { type: 'string' }, delivery_location: { type: 'string' }, due_date: { type: 'string', description: 'due date in format YYYY-MM-DD' }, tender_number: { type: 'string' }, items: { type: 'array', items: { type: 'object', properties: { description: { type: 'string' }, quantity: { type: 'number' }, uom: { type: 'string' } }, required: ['description'] } } }, required: ['customer_name', 'company_name', 'items'] } } } }}"
+      },
+      "id": "83fa0cb2-fb3d-4c3e-8b1e-abcf874acbef",
+      "name": "Extract Metadata and Items Gemini API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2000,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let responseText = $json.candidates[0].content.parts[0].text.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst payload = $('Prepare LLM Payload').first().json;\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    threadId: payload.threadId || '',\n    attachments: payload.attachments || [],\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  }\n}];"
+      },
+      "id": "83cf0cb2-fb4d-4d3e-8b2e-abcd874bcbef",
+      "name": "Parse Extraction Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": "03_customer_matching_and_ticket_creation",
+        "mode": "wait",
+        "options": {}
+      },
+      "id": "42ca31bf-fb82-411a-82fe-3dcb291f0923",
+      "name": "Trigger Customer Matching & Creation",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Trigger": {
+      "main": [
+        [
+          {
+            "node": "Has Attachments?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachments?": {
+      "main": [
+        [
+          {
+            "node": "Split Attachments Loop",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Split Attachments Loop": {
+      "main": [
+        [
+          {
+            "node": "Is Image File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Image File?": {
+      "main": [
+        [
+          {
+            "node": "Convert Image to Base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Text from Doc Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Image to Base64": {
+      "main": [
+        [
+          {
+            "node": "Gemini Image OCR API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Image OCR API": {
+      "main": [
+        [
+          {
+            "node": "Parse Image OCR Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Image OCR Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text from Doc Node": {
+      "main": [
+        [
+          {
+            "node": "Format Document Text Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Document Text Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Extracted Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare LLM Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare LLM Payload": {
+      "main": [
+        [
+          {
+            "node": "Extract Metadata and Items Gemini API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Metadata and Items Gemini API": {
+      "main": [
+        [
+          {
+            "node": "Parse Extraction Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Extraction Output": {
+      "main": [
+        [
+          {
+            "node": "Trigger Customer Matching & Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 360
+  },
+  "active": false
+}

@@ -1,0 +1,269 @@
+{
+  "name": "01_Email_Intake_and_Classification",
+  "nodes": [
+    {
+      "parameters": {
+        "postTriggerAction": "read",
+        "format": "resolved",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "forceUtf8": true
+        }
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9001",
+      "name": "IMAP Email Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "credentials": {
+        "imap": {
+          "id": "imap-cred-id",
+          "name": "Kayan Domain IMAP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBj6arQ4n1J_fyzlcyFV9I41qJUxArni78",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { contents: [ { parts: [ { text: 'You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: \\'RFQ\\', \\'Tender\\', \\'Quotation Request\\', \\'Budget Request\\', \\'Commercial Inquiry\\', \\'RFP\\', or \\'Non Inquiry\\' if it\\'s spam, marketing, personal, or administrative.\\n\\nEmail Content:\\nSubject: ' + ($('IMAP Email Trigger').item.json.subject || '') + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '') } ] } ], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'object', properties: { classification: { type: 'string', enum: ['RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', 'Non Inquiry'] }, confidence: { type: 'integer' }, reason: { type: 'string' } }, required: ['classification', 'confidence', 'reason'] } } } }}"
+      },
+      "id": "96c342f0-bf48-4395-88de-e91b29a24002",
+      "name": "Classify with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let responseText = $json.candidates[0].content.parts[0].text.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst trigger = $('IMAP Email Trigger').first().json;\n\nreturn [{\n  json: {\n    email_id: trigger.messageId,\n    to: trigger.to?.value?.[0]?.address || '',\n    from: trigger.from?.value?.[0]?.address || '',\n    subject: trigger.subject,\n    body: trigger.text || '',\n    threadId: trigger.threadId || '',\n    attachments: trigger.attachments || [],\n    classification: parsed.classification,\n    confidence: parsed.confidence,\n    reason: parsed.reason\n  }\n}];"
+      },
+      "id": "86bc320f-bcf0-42ba-b3f0-466bc0092c42",
+      "name": "Parse AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{$json.classification}}",
+              "rightValue": "Non Inquiry",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "82f8c5b2-32a2-4a0b-93ff-15cf992b15e2",
+      "name": "Is Non-Inquiry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-2",
+              "leftValue": "={{$json.confidence}}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "lessThan"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb2",
+      "name": "Is Low Confidence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/resource/Inquiry Ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry_type\": \"{{$json.classification}}\",\n  \"status\": \"Pending Review\",\n  \"ai_needs_review\": 1,\n  \"ai_classification\": \"{{$json.classification}}\",\n  \"ai_confidence\": {{$json.confidence}},\n  \"source_mailbox\": \"{{$json.to}}\",\n  \"original_email_subject\": \"{{$json.subject}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb3",
+      "name": "Create Review Inquiry in ERPNext",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1400,
+        380
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": "02_ocr_and_data_extraction",
+        "mode": "wait",
+        "options": {}
+      },
+      "id": "52ba4412-ab7e-4061-9c3f-b8832a8ab2cf",
+      "name": "Trigger OCR & Extraction",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        540
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1ab4de3a-cfef-4cde-80df-26cf0182cbef",
+      "name": "Archive / No Action",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "IMAP Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Classify with Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with Gemini": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Output": {
+      "main": [
+        [
+          {
+            "node": "Is Non-Inquiry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Non-Inquiry?": {
+      "main": [
+        [
+          {
+            "node": "Archive / No Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Low Confidence?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Low Confidence?": {
+      "main": [
+        [
+          {
+            "node": "Create Review Inquiry in ERPNext",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trigger OCR & Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionTimeout": 300
+  },
+  "active": false
+}

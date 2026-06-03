@@ -1,0 +1,414 @@
+{
+  "name": "04_Email_Thread_Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "postTriggerAction": "read",
+        "format": "resolved",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "forceUtf8": true
+        }
+      },
+      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9004",
+      "name": "IMAP Reply Monitor",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 1,
+      "position": [
+        100,
+        280
+      ],
+      "credentials": {
+        "imap": {
+          "id": "imap-cred-id",
+          "name": "Kayan Domain IMAP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://kayan-eg.net/api/resource/Inquiry Ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filters",
+              "value": "={\"thread_id\": \"{{$json.threadId}}\"}"
+            },
+            {
+              "name": "fields",
+              "value": "[\"name\", \"status\", \"sales_engineer\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc1",
+      "name": "Lookup Existing Ticket by Thread API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        280
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-thread-exists",
+              "leftValue": "={{$json.data && $json.data.length > 0}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb4",
+      "name": "Thread Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        560,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-attachments-sync",
+              "leftValue": "={{$('IMAP Reply Monitor').item.json.attachments ? Object.keys($('IMAP Reply Monitor').item.json.attachments).length : 0}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "greaterThan"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "93b2df0f-c3f2-4934-8be0-b98a1293a9d3",
+      "name": "Has Attachments?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        820,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitBy": "attachments",
+        "options": {}
+      },
+      "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab3",
+      "name": "Split Attachments",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3.1,
+      "position": [
+        1040,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/method/upload_file",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "multipart/form-data"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyFormat": "multipart-form-data",
+        "formData": {
+          "parameters": [
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "attachment"
+            },
+            {
+              "name": "doctype",
+              "value": "Inquiry Ticket"
+            },
+            {
+              "name": "docname",
+              "value": "={{$('Lookup Existing Ticket by Thread API').first().json.data[0].name}}"
+            },
+            {
+              "name": "is_private",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da8f121d-a3df-40be-b4db-ef7eab3c4b93",
+      "name": "Upload Thread File API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1240,
+        100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "position",
+        "options": {}
+      },
+      "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bed",
+      "name": "Merge Uploaded Files",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/erpnext/attach-email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$('Lookup Existing Ticket by Thread API').first().json.data[0].name}}\",\n  \"email_id\": \"{{$('IMAP Reply Monitor').first().json.messageId}}\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc2",
+      "name": "Link Thread Email API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1700,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kayan-eg.net/api/v1/notifications/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inquiry\": \"{{$('Lookup Existing Ticket by Thread API').first().json.data[0].name}}\",\n  \"type\": \"Email\",\n  \"recipient\": \"{{$('Lookup Existing Ticket by Thread API').first().json.data[0].sales_engineer}}\",\n  \"template\": \"new_customer_reply\"\n}",
+        "options": {}
+      },
+      "id": "31b26ae3-02f8-4100-abef-ffde122a2bc3",
+      "name": "Notify Thread Owner API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1920,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": "01_email_intake_and_classification",
+        "mode": "wait",
+        "options": {}
+      },
+      "id": "52ba4412-ab7e-4061-9c3f-b8832a8ab2d0",
+      "name": "Run Main Email Intake Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        820,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "IMAP Reply Monitor": {
+      "main": [
+        [
+          {
+            "node": "Lookup Existing Ticket by Thread API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Existing Ticket by Thread API": {
+      "main": [
+        [
+          {
+            "node": "Thread Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thread Exists?": {
+      "main": [
+        [
+          {
+            "node": "Has Attachments?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Main Email Intake Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Attachments?": {
+      "main": [
+        [
+          {
+            "node": "Split Attachments",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Uploaded Files",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Split Attachments": {
+      "main": [
+        [
+          {
+            "node": "Upload Thread File API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Thread File API": {
+      "main": [
+        [
+          {
+            "node": "Merge Uploaded Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Uploaded Files": {
+      "main": [
+        [
+          {
+            "node": "Link Thread Email API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Link Thread Email API": {
+      "main": [
+        [
+          {
+            "node": "Notify Thread Owner API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}
