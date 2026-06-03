@@ -106,7 +106,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
@@ -202,7 +202,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AQ.Ab8RN6K_pP8XJw3yOHgdC5GvxF4p3FPaFgkTdMfmEKo--1Vj_w",
         "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
