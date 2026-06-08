@@ -42,7 +42,22 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"google/gemini-2.5-flash:free\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\\nReturn ONLY a JSON object containing the following keys:\\n- classification (string)\\n- confidence (number between 0 and 100)\\n- reason (string)\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}\n    }\n  ],\n  \"response_format\": {\n    \"type\": \"json_object\"\n  }\n}"
+        "jsonBody": {
+          "model": "openrouter/free",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\nReturn ONLY a JSON object containing the following keys:\n- classification (string)\n- confidence (number between 0 and 100)\n- reason (string)"
+            },
+            {
+              "role": "user",
+              "content": "={{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}"
+            }
+          ],
+          "response_format": {
+            "type": "json_object"
+          }
+        }
       },
       "id": "96c342f0-bf48-4395-88de-e91b29a24002",
       "name": "Classify with OpenRouter",
@@ -119,7 +134,7 @@
             {
               "id": "cond-2",
               "leftValue": "={{$json.confidence}}",
-              "rightValue": 80,
+              "rightValue": "={{ $('Get Inquiry Settings').item.json.message.confidence_threshold }}",
               "operator": {
                 "type": "number",
                 "operation": "lessThan"
@@ -199,6 +214,107 @@
         1140,
         220
       ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.get_ai_settings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "get-inquiry-settings-id",
+      "name": "Get Inquiry Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        360,
+        150
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-key",
+              "leftValue": "={{ $json.message.ai_api_key }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-ai-settings-id",
+      "name": "Check AI Settings",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        540,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Get Inquiry Settings').item.json.message.ai_api_url.replace(/\\/$/, '') }}/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Get Inquiry Settings').item.json.message.ai_api_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": {
+          "model": "={{ $('Get Inquiry Settings').item.json.message.default_ai_provider === 'Gemini' ? 'google/gemini-2.5-flash' : 'openai/gpt-4o-mini' }}",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\nReturn ONLY a JSON object containing the following keys:\n- classification (string)\n- confidence (number between 0 and 100)\n- reason (string)"
+            },
+            {
+              "role": "user",
+              "content": "={{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}"
+            }
+          ],
+          "response_format": {
+            "type": "json_object"
+          }
+        }
+      },
+      "id": "classify-custom-ai-id",
+      "name": "Classify with Custom AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        700,
+        100
+      ]
     }
   ],
   "connections": {
@@ -206,18 +322,7 @@
       "main": [
         [
           {
-            "node": "Classify with OpenRouter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Classify with OpenRouter": {
-      "main": [
-        [
-          {
-            "node": "Parse AI Output",
+            "node": "Get Inquiry Settings",
             "type": "main",
             "index": 0
           }
@@ -265,6 +370,57 @@
         [
           {
             "node": "Trigger OCR & Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with OpenRouter": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Inquiry Settings": {
+      "main": [
+        [
+          {
+            "node": "Check AI Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check AI Settings": {
+      "main": [
+        [
+          {
+            "node": "Classify with Custom AI",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Classify with OpenRouter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with Custom AI": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Output",
             "type": "main",
             "index": 0
           }

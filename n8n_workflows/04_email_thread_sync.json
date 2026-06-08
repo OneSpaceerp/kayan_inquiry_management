@@ -207,7 +207,7 @@
     {
       "parameters": {
         "mode": "combine",
-        "combineBy": "position",
+        "combineBy": "combineByPosition",
         "options": {}
       },
       "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bed",
@@ -292,7 +292,7 @@
     {
       "parameters": {
         "workflowId": "01_email_intake_and_classification",
-        "mode": "wait",
+        "mode": "each",
         "options": {}
       },
       "id": "52ba4412-ab7e-4061-9c3f-b8832a8ab2d0",

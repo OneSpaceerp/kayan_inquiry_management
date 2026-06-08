@@ -99,3 +99,27 @@ def create_revision(inquiry_name: str, reason: str) -> dict:
 	doc.save(ignore_permissions=True)
 
 	return {"revision_no": revision_no, "status": "Requested"}
+
+
+@frappe.whitelist(allow_guest=True)
+def inspect_headers() -> dict:
+	"""Inspect request headers."""
+	return dict(frappe.request.headers) if hasattr(frappe, "request") and frappe.request else {}
+
+
+@frappe.whitelist()
+def get_ai_settings() -> dict:
+	"""Return AI configuration settings including decrypted API key."""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	settings = frappe.get_doc("Inquiry Settings")
+	return {
+		"confidence_threshold": settings.confidence_threshold or 75,
+		"default_ai_provider": settings.default_ai_provider,
+		"preferred_language": settings.preferred_language or "English",
+		"ai_api_url": settings.ai_api_url,
+		"ai_api_key": settings.get_password("ai_api_key") if settings.ai_api_key else None
+	}
+
+
