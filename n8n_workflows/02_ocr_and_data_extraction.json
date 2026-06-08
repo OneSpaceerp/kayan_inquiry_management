@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "fieldToSplitBy": "attachments",
+        "fieldToSplitOut": "attachments",
         "options": {}
       },
       "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab1",
@@ -276,7 +276,7 @@
     },
     {
       "parameters": {
-        "workflowId": "03_customer_matching_and_ticket_creation",
+        "workflowId": "cIiMD78rK1s3PlLj",
         "mode": "each",
         "options": {}
       },

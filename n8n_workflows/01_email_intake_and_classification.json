@@ -3,11 +3,9 @@
   "nodes": [
     {
       "parameters": {
-        "postTriggerAction": "read",
         "format": "resolved",
         "options": {
-          "allowUnauthorizedCerts": true,
-          "forceUtf8": true
+          "allowUnauthorizedCerts": true
         }
       },
       "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9001",
@@ -15,8 +13,8 @@
       "type": "n8n-nodes-base.emailReadImap",
       "typeVersion": 1,
       "position": [
-        250,
-        300
+        64,
+        288
       ],
       "credentials": {
         "imap": {
@@ -191,8 +189,8 @@
     },
     {
       "parameters": {
-        "workflowId": "02_ocr_and_data_extraction",
-        "mode": "wait",
+        "workflowId": "akTcmUff0WrK5oLe",
+        "mode": "each",
         "options": {}
       },
       "id": "52ba4412-ab7e-4061-9c3f-b8832a8ab2cf",
@@ -200,8 +198,8 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1,
       "position": [
-        1400,
-        540
+        1408,
+        544
       ]
     },
     {
