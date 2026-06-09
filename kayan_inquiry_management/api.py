@@ -212,6 +212,22 @@ def create_opportunity_for_inquiry(
 			"status": "Open",
 		}
 	)
+
+	# Clean up any invalid "0" or 0 values in Link fields to prevent LinkValidationError
+	for key, val in list(opp.as_dict().items()):
+		if val in ("0", 0):
+			field = opp.meta.get_field(key)
+			if field and field.fieldtype == "Link":
+				opp.set(key, None)
+
+	for df in opp.meta.get_table_fields():
+		for child in opp.get(df.fieldname) or []:
+			for key, val in list(child.as_dict().items()):
+				if val in ("0", 0):
+					field = child.meta.get_field(key)
+					if field and field.fieldtype == "Link":
+						child.set(key, None)
+
 	opp.insert(ignore_permissions=True)
 	frappe.db.commit()
 
@@ -247,6 +263,21 @@ def create_lead_for_inquiry(
 			"status": "Open",
 		}
 	)
+	# Clean up any invalid "0" or 0 values in Link fields to prevent LinkValidationError
+	for key, val in list(lead.as_dict().items()):
+		if val in ("0", 0):
+			field = lead.meta.get_field(key)
+			if field and field.fieldtype == "Link":
+				lead.set(key, None)
+
+	for df in lead.meta.get_table_fields():
+		for child in lead.get(df.fieldname) or []:
+			for key, val in list(child.as_dict().items()):
+				if val in ("0", 0):
+					field = child.meta.get_field(key)
+					if field and field.fieldtype == "Link":
+						child.set(key, None)
+
 	lead.insert(ignore_permissions=True)
 	frappe.db.commit()
 
