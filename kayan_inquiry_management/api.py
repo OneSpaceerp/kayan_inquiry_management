@@ -123,3 +123,61 @@ def get_ai_settings() -> dict:
 	}
 
 
+@frappe.whitelist()
+def send_sales_engineer_notification(inquiry: str) -> dict:
+	"""Send an email/notification to the Sales Engineer assigned to an Inquiry Ticket.
+
+	Called by n8n workflow after a new inquiry ticket is created.
+	If no specific engineer is assigned, notifies all users with the Sales Engineer role.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	doc = frappe.get_doc("Inquiry Ticket", inquiry)
+
+	# Determine recipients
+	recipients = []
+	if doc.sales_engineer:
+		engineer_email = frappe.db.get_value("User", doc.sales_engineer, "email")
+		if engineer_email:
+			recipients.append(engineer_email)
+	else:
+		# Notify all active Sales Engineers
+		engineers = frappe.get_all(
+			"Has Role",
+			filters={"role": "Sales Engineer", "parenttype": "User"},
+			fields=["parent as user"],
+		)
+		for eng in engineers:
+			email = frappe.db.get_value("User", eng.user, "email")
+			if email and frappe.db.get_value("User", eng.user, "enabled"):
+				recipients.append(email)
+
+	if not recipients:
+		return {"status": "skipped", "reason": "No Sales Engineer recipients found"}
+
+	subject = f"New Inquiry Ticket: {doc.name} - {doc.company_name or ''}"
+	message = frappe.render_template(
+		"""<p>A new inquiry ticket has been created and requires your attention.</p>
+<table style="border-collapse:collapse; width:100%">
+  <tr><td style="padding:4px 8px; font-weight:bold">Ticket</td><td style="padding:4px 8px">{{ doc.name }}</td></tr>
+  <tr><td style="padding:4px 8px; font-weight:bold">Company</td><td style="padding:4px 8px">{{ doc.company_name or '-' }}</td></tr>
+  <tr><td style="padding:4px 8px; font-weight:bold">Subject</td><td style="padding:4px 8px">{{ doc.original_email_subject or '-' }}</td></tr>
+  <tr><td style="padding:4px 8px; font-weight:bold">Type</td><td style="padding:4px 8px">{{ doc.inquiry_type or '-' }}</td></tr>
+  <tr><td style="padding:4px 8px; font-weight:bold">Status</td><td style="padding:4px 8px">{{ doc.status }}</td></tr>
+</table>
+<br>
+<a href="{{ frappe.utils.get_url() }}/{{ doc.doctype }}/{{ doc.name }}">Open Ticket</a>""",
+		{"doc": doc},
+	)
+
+	frappe.sendmail(
+		recipients=recipients,
+		subject=subject,
+		message=message,
+		reference_doctype="Inquiry Ticket",
+		reference_name=doc.name,
+	)
+
+	return {"status": "sent", "recipients": recipients, "ticket": doc.name}
+

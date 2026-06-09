@@ -15,7 +15,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://kayan-eg.net/api/resource/Customer",
+        "url": "https://onespace.kayan-eg.net/api/resource/Customer",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -92,7 +92,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/resource/Opportunity",
+        "url": "https://onespace.kayan-eg.net/api/resource/Opportunity",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -127,7 +127,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://kayan-eg.net/api/resource/Lead",
+        "url": "https://onespace.kayan-eg.net/api/resource/Lead",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -204,7 +204,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/resource/Lead",
+        "url": "https://onespace.kayan-eg.net/api/resource/Lead",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -239,7 +239,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/resource/Opportunity",
+        "url": "https://onespace.kayan-eg.net/api/resource/Opportunity",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -302,7 +302,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/resource/Inquiry Ticket",
+        "url": "https://onespace.kayan-eg.net/api/resource/Inquiry Ticket",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -368,7 +368,7 @@
     },
     {
       "parameters": {
-        "fieldToSplitBy": "attachments",
+        "fieldToSplitOut": "attachments",
         "options": {}
       },
       "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab4",
@@ -383,7 +383,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/method/upload_file",
+        "url": "https://onespace.kayan-eg.net/api/method/upload_file",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -454,7 +454,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://kayan-eg.net/api/v1/notifications/send",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.send_sales_engineer_notification",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
