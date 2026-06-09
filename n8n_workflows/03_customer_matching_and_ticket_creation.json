@@ -15,7 +15,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://onespace.kayan-eg.net/api/resource/Customer",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.search_customer",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -31,12 +31,12 @@
         "queryParameters": {
           "parameters": [
             {
-              "name": "filters",
-              "value": "= [[\"Customer\", \"customer_name\", \"like\", \"%%{{ $json.company_name }}%%\"]]"
+              "name": "company_name",
+              "value": "={{ $('Execute Trigger').first().json.company_name || '' }}"
             },
             {
-              "name": "fields",
-              "value": "[\"name\", \"customer_name\"]"
+              "name": "email",
+              "value": "={{ $('Execute Trigger').first().json.from || '' }}"
             }
           ]
         },
@@ -68,7 +68,7 @@
           "conditions": [
             {
               "id": "cond-customer-found",
-              "leftValue": "={{$json.data && $json.data.length > 0}}",
+              "leftValue": "={{ $json.message && $json.message.data && $json.message.data.length > 0 }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -92,7 +92,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/resource/Opportunity",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_opportunity_for_inquiry",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -106,7 +106,10 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"opportunity_from\": \"Customer\",\n  \"party_name\": \"{{$json.data[0].name}}\",\n  \"company\": \"Kayan Eg\"\n}",
+        "jsonBody": {
+          "opportunity_from": "Customer",
+          "party_name": "={{ $json.message.data[0].name }}"
+        },
         "options": {}
       },
       "id": "31b26ae3-02f8-4100-abef-ffde122a2bb4",
@@ -127,7 +130,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://onespace.kayan-eg.net/api/resource/Lead",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.search_lead",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -143,12 +146,12 @@
         "queryParameters": {
           "parameters": [
             {
-              "name": "filters",
-              "value": "=[[\"Lead\", \"email_id\", \"=\", \"{{$('Execute Trigger').first().json.from}}\"]]"
+              "name": "email",
+              "value": "={{ $('Execute Trigger').first().json.from || '' }}"
             },
             {
-              "name": "fields",
-              "value": "[\"name\", \"lead_name\"]"
+              "name": "company_name",
+              "value": "={{ $('Execute Trigger').first().json.company_name || '' }}"
             }
           ]
         },
@@ -180,7 +183,7 @@
           "conditions": [
             {
               "id": "cond-lead-found",
-              "leftValue": "={{$json.data && $json.data.length > 0}}",
+              "leftValue": "={{ $json.message && $json.message.data && $json.message.data.length > 0 }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -204,7 +207,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/resource/Lead",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_lead_for_inquiry",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -218,7 +221,12 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"lead_name\": \"{{$('Execute Trigger').first().json.customer_name || 'Inquiry Contact'}}\",\n  \"company_name\": \"{{$('Execute Trigger').first().json.company_name || 'Individual'}}\",\n  \"email_id\": \"{{$('Execute Trigger').first().json.from}}\",\n  \"phone\": \"{{$('Execute Trigger').first().json.phone}}\"\n}",
+        "jsonBody": {
+          "lead_name": "={{ $('Execute Trigger').first().json.customer_name || $('Execute Trigger').first().json.from || 'Inquiry Contact' }}",
+          "company_name": "={{ $('Execute Trigger').first().json.company_name || '' }}",
+          "email_id": "={{ $('Execute Trigger').first().json.from || '' }}",
+          "phone": "={{ $('Execute Trigger').first().json.phone || '' }}"
+        },
         "options": {}
       },
       "id": "31b26ae3-02f8-4100-abef-ffde122a2bb6",
@@ -239,7 +247,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/resource/Opportunity",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_opportunity_for_inquiry",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -253,7 +261,10 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"opportunity_from\": \"Lead\",\n  \"party_name\": \"{{$json.data ? $json.data[0].name : $json.name}}\",\n  \"company\": \"Kayan Eg\"\n}",
+        "jsonBody": {
+          "opportunity_from": "Lead",
+          "party_name": "={{ ($json.message && $json.message.data && $json.message.data.length > 0) ? $json.message.data[0].name : $json.message.name }}"
+        },
         "options": {}
       },
       "id": "31b26ae3-02f8-4100-abef-ffde122a2bb7",

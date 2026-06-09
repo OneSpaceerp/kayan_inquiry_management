@@ -124,6 +124,140 @@ def get_ai_settings() -> dict:
 
 
 @frappe.whitelist()
+def search_customer(company_name: str = "", email: str = "") -> dict:
+	"""Search for an existing Customer by company name or email.
+
+	Returns the first matching customer or empty data list.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	filters = []
+	if company_name:
+		filters.append(["Customer", "customer_name", "like", f"%{company_name}%"])
+	if email:
+		filters.append(["Customer", "email_id", "=", email])
+
+	if not filters:
+		return {"data": []}
+
+	customers = frappe.get_all(
+		"Customer",
+		or_filters=filters if len(filters) > 1 else None,
+		filters=filters if len(filters) == 1 else None,
+		fields=["name", "customer_name", "email_id"],
+		limit=5,
+	)
+	return {"data": customers}
+
+
+@frappe.whitelist()
+def search_lead(email: str = "", company_name: str = "") -> dict:
+	"""Search for an existing Lead by email or company name.
+
+	Returns the first matching lead or empty data list.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	filters = []
+	if email:
+		filters.append(["Lead", "email_id", "=", email])
+	if company_name:
+		filters.append(["Lead", "company_name", "like", f"%{company_name}%"])
+
+	if not filters:
+		return {"data": []}
+
+	leads = frappe.get_all(
+		"Lead",
+		or_filters=filters if len(filters) > 1 else None,
+		filters=filters if len(filters) == 1 else None,
+		fields=["name", "lead_name", "email_id", "company_name"],
+		limit=5,
+	)
+	return {"data": leads}
+
+
+@frappe.whitelist()
+def create_opportunity_for_inquiry(
+	opportunity_from: str,
+	party_name: str,
+) -> dict:
+	"""Create an ERPNext Opportunity for an inquiry, using the system default company.
+
+	Args:
+		opportunity_from: "Customer" or "Lead"
+		party_name: The name (ID) of the Customer or Lead document
+
+	Returns dict with the created Opportunity name and party details.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	if opportunity_from not in ("Customer", "Lead"):
+		frappe.throw(_("opportunity_from must be 'Customer' or 'Lead'"))
+
+	# Use the system default company — avoids hardcoding
+	company = frappe.defaults.get_defaults().get("company") or frappe.db.get_single_value(
+		"Global Defaults", "default_company"
+	)
+
+	opp = frappe.get_doc(
+		{
+			"doctype": "Opportunity",
+			"opportunity_from": opportunity_from,
+			"party_name": party_name,
+			"company": company,
+			"status": "Open",
+		}
+	)
+	opp.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {
+		"name": opp.name,
+		"opportunity_from": opp.opportunity_from,
+		"party_name": opp.party_name,
+		"company": opp.company,
+	}
+
+
+@frappe.whitelist()
+def create_lead_for_inquiry(
+	lead_name: str,
+	company_name: str = "",
+	email_id: str = "",
+	phone: str = "",
+) -> dict:
+	"""Create a new Lead for an unknown inquiry sender.
+
+	Returns dict with the created Lead name.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	lead = frappe.get_doc(
+		{
+			"doctype": "Lead",
+			"lead_name": lead_name or email_id or "Unknown",
+			"company_name": company_name or "",
+			"email_id": email_id or "",
+			"phone": phone or "",
+			"status": "Open",
+		}
+	)
+	lead.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {
+		"name": lead.name,
+		"lead_name": lead.lead_name,
+		"email_id": lead.email_id,
+	}
+
+
+@frappe.whitelist()
 def send_sales_engineer_notification(inquiry: str) -> dict:
 	"""Send an email/notification to the Sales Engineer assigned to an Inquiry Ticket.
 
