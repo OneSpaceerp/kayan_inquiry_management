@@ -23,6 +23,9 @@ doc_events = {
 		"validate": "kayan_inquiry_management.inquiry_management.doctype.inquiry_ticket.inquiry_ticket.validate_transition",
 		"on_update": "kayan_inquiry_management.inquiry_management.doctype.inquiry_ticket.inquiry_ticket.on_update_audit",
 	},
+	"Opportunity": {
+		"validate": "kayan_inquiry_management.api.clean_opportunity_links",
+	},
 }
 
 # --------------------------------------------------------------------------

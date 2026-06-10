@@ -213,18 +213,6 @@ def create_opportunity_for_inquiry(
 		}
 	)
 
-	# Debugging: Raise an exception with all fields containing '0' or 0
-	debug_info = {}
-	for key, val in opp.as_dict().items():
-		if val in ("0", 0, "0.0", 0.0):
-			field = opp.meta.get_field(key)
-			debug_info[key] = {
-				"value": val,
-				"fieldtype": field.fieldtype if field else None,
-				"options": field.options if field else None
-			}
-	frappe.throw(f"DEBUG opp fields: {debug_info}")
-
 	opp.insert(ignore_permissions=True)
 	frappe.db.commit()
 
@@ -342,4 +330,21 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 	)
 
 	return {"status": "sent", "recipients": recipients, "ticket": doc.name}
+
+
+def clean_opportunity_links(doc, method=None):
+	"""Hook function registered in hooks.py to clean up invalid Link fields before insert/validate."""
+	for key, val in list(doc.as_dict().items()):
+		if val in ("0", 0):
+			field = doc.meta.get_field(key)
+			if field and field.fieldtype == "Link":
+				doc.set(key, None)
+
+	for df in doc.meta.get_table_fields():
+		for child in doc.get(df.fieldname) or []:
+			for key, val in list(child.as_dict().items()):
+				if val in ("0", 0):
+					field = child.meta.get_field(key)
+					if field and field.fieldtype == "Link":
+						child.set(key, None)
 
