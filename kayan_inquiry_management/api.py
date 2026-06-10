@@ -213,20 +213,17 @@ def create_opportunity_for_inquiry(
 		}
 	)
 
-	# Clean up any invalid "0" or 0 values in Link fields to prevent LinkValidationError
-	for key, val in list(opp.as_dict().items()):
-		if val in ("0", 0):
+	# Debugging: Raise an exception with all fields containing '0' or 0
+	debug_info = {}
+	for key, val in opp.as_dict().items():
+		if val in ("0", 0, "0.0", 0.0):
 			field = opp.meta.get_field(key)
-			if field and field.fieldtype == "Link":
-				opp.set(key, None)
-
-	for df in opp.meta.get_table_fields():
-		for child in opp.get(df.fieldname) or []:
-			for key, val in list(child.as_dict().items()):
-				if val in ("0", 0):
-					field = child.meta.get_field(key)
-					if field and field.fieldtype == "Link":
-						child.set(key, None)
+			debug_info[key] = {
+				"value": val,
+				"fieldtype": field.fieldtype if field else None,
+				"options": field.options if field else None
+			}
+	frappe.throw(f"DEBUG opp fields: {debug_info}")
 
 	opp.insert(ignore_permissions=True)
 	frappe.db.commit()
