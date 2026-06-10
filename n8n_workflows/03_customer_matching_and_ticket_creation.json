@@ -284,8 +284,7 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition",
+        "mode": "append",
         "options": {}
       },
       "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bee",
