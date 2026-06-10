@@ -198,6 +198,21 @@ def create_opportunity_for_inquiry(
 	if opportunity_from not in ("Customer", "Lead"):
 		frappe.throw(_("opportunity_from must be 'Customer' or 'Lead'"))
 
+	# Pre-clean the source document to remove invalid "0" link values
+	try:
+		source_doc = frappe.get_doc(opportunity_from, party_name)
+		source_modified = False
+		for field in source_doc.meta.fields:
+			if field.fieldtype in ("Link", "Dynamic Link") and source_doc.get(field.fieldname) in ("0", 0):
+				source_doc.set(field.fieldname, None)
+				source_modified = True
+		if source_modified:
+			source_doc.save(ignore_permissions=True)
+			frappe.db.commit()
+	except Exception as e:
+		# Don't block if we can't load/save the source doc, just log it
+		frappe.log_error(message=str(e), title="create_opportunity_for_inquiry source doc cleanup failed")
+
 	# Use the system default company — avoids hardcoding
 	company = frappe.defaults.get_defaults().get("company") or frappe.db.get_single_value(
 		"Global Defaults", "default_company"
@@ -212,7 +227,6 @@ def create_opportunity_for_inquiry(
 			"status": "Open",
 		}
 	)
-
 	opp.insert(ignore_permissions=True)
 	frappe.db.commit()
 
@@ -334,17 +348,13 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 
 def clean_opportunity_links(doc, method=None):
 	"""Hook function registered in hooks.py to clean up invalid Link fields before insert/validate."""
-	for key, val in list(doc.as_dict().items()):
-		if val in ("0", 0):
-			field = doc.meta.get_field(key)
-			if field and field.fieldtype == "Link":
-				doc.set(key, None)
+	for field in doc.meta.fields:
+		if field.fieldtype in ("Link", "Dynamic Link") and doc.get(field.fieldname) in ("0", 0):
+			doc.set(field.fieldname, None)
 
 	for df in doc.meta.get_table_fields():
 		for child in doc.get(df.fieldname) or []:
-			for key, val in list(child.as_dict().items()):
-				if val in ("0", 0):
-					field = child.meta.get_field(key)
-					if field and field.fieldtype == "Link":
-						child.set(key, None)
+			for field in child.meta.fields:
+				if field.fieldtype in ("Link", "Dynamic Link") and child.get(field.fieldname) in ("0", 0):
+					child.set(field.fieldname, None)
 
