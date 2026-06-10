@@ -227,7 +227,7 @@ def create_opportunity_for_inquiry(
 			"status": "Open",
 		}
 	)
-	opp.insert(ignore_permissions=True)
+	opp.insert(ignore_permissions=True, ignore_mandatory=True)
 	frappe.db.commit()
 
 	return {
@@ -277,7 +277,7 @@ def create_lead_for_inquiry(
 					if field and field.fieldtype == "Link":
 						child.set(key, None)
 
-	lead.insert(ignore_permissions=True)
+	lead.insert(ignore_permissions=True, ignore_mandatory=True)
 	frappe.db.commit()
 
 	return {
