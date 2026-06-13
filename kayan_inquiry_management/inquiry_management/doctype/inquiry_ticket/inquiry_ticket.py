@@ -108,8 +108,12 @@ class InquiryTicket(Document):
 
 	def before_insert(self):
 		"""Set defaults on new inquiry creation."""
-		self.status = "New"
-		self.sla_status = "Not Started"
+		if not self.status:
+			self.status = "New"
+		if not self.sla_status:
+			self.sla_status = "Not Started"
+		if not self.received_date:
+			self.received_date = frappe.utils.now_datetime()
 
 		# Auto-assign Sales Engineer from mailbox mapping
 		if self.source_mailbox and not self.sales_engineer:

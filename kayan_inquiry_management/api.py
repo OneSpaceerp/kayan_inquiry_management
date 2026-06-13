@@ -346,6 +346,55 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 	return {"status": "sent", "recipients": recipients, "ticket": doc.name}
 
 
+@frappe.whitelist()
+def create_ai_processing_log(
+	inquiry_ticket: str = "",
+	task_type: str = "",
+	provider: str = "",
+	model: str = "",
+	status: str = "Completed",
+	execution_time: float = 0,
+	input_tokens: int = 0,
+	output_tokens: int = 0,
+) -> dict:
+	"""Create an AI Processing Log entry for tracking AI operations.
+
+	Called by n8n workflows after each AI call (classification, OCR, extraction).
+
+	Args:
+		inquiry_ticket: The Inquiry Ticket name (may be empty for pre-ticket calls)
+		task_type: e.g. "Email Classification", "OCR", "Data Extraction"
+		provider: e.g. "OpenAI", "Gemini"
+		model: e.g. "openai/gpt-4o-mini", "google/gemini-2.5-flash"
+		status: "Queued", "Processing", "Completed", "Failed"
+		execution_time: Seconds taken
+		input_tokens: Token count for input
+		output_tokens: Token count for output
+
+	Returns dict with created log name.
+	"""
+	if not frappe.session.user or frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	log = frappe.get_doc(
+		{
+			"doctype": "AI Processing Log",
+			"inquiry_ticket": inquiry_ticket or None,
+			"task_type": task_type,
+			"provider": provider,
+			"model": model,
+			"status": status,
+			"execution_time": float(execution_time or 0),
+			"input_tokens": int(input_tokens or 0),
+			"output_tokens": int(output_tokens or 0),
+		}
+	)
+	log.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {"name": log.name, "status": log.status}
+
+
 def clean_opportunity_links(doc, method=None):
 	"""Hook function registered in hooks.py to clean up invalid Link fields before insert/validate."""
 	for field in doc.meta.fields:
