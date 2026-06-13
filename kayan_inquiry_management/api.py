@@ -346,7 +346,7 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 	return {"status": "sent", "recipients": recipients, "ticket": doc.name}
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def create_ai_processing_log(
 	inquiry_ticket: str = "",
 	task_type: str = "",
@@ -373,9 +373,6 @@ def create_ai_processing_log(
 
 	Returns dict with created log name.
 	"""
-	if not frappe.session.user or frappe.session.user == "Guest":
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
 	log = frappe.get_doc(
 		{
 			"doctype": "AI Processing Log",
