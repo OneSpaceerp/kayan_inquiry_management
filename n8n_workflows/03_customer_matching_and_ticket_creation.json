@@ -554,7 +554,7 @@
           "conditions": [
             {
               "id": "cond-has-attachments",
-              "leftValue": "={{$('Prepare Inquiry Payload').first().json.attachments.length}}",
+              "leftValue": "={{ $('Execute Trigger').first().binary ? Object.keys($('Execute Trigger').first().binary).length : 0 }}",
               "rightValue": 0,
               "operator": {
                 "type": "number",
@@ -577,13 +577,12 @@
     },
     {
       "parameters": {
-        "fieldToSplitOut": "attachments",
-        "options": {}
+        "jsCode": "const triggerData = $('Execute Trigger').first();\nconst results = [];\n\nif (triggerData.binary) {\n  for (const key of Object.keys(triggerData.binary)) {\n    const file = triggerData.binary[key];\n    results.push({\n      json: {\n        filename: file.fileName || file.name || 'attachment',\n        mimeType: file.mimeType || '',\n        binaryKey: key\n      },\n      binary: {\n        attachment: file\n      }\n    });\n  }\n}\n\nreturn results;"
       },
       "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab4",
       "name": "Split Files for Upload",
-      "type": "n8n-nodes-base.itemLists",
-      "typeVersion": 3.1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         2592,
         192
@@ -605,10 +604,26 @@
           ]
         },
         "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
+        "bodyFormat": "multipart-form-data",
+        "formData": {
           "parameters": [
-            {}
+            {
+              "name": "file",
+              "parameterType": "formBinaryData",
+              "inputDataFieldName": "attachment"
+            },
+            {
+              "name": "doctype",
+              "value": "Inquiry Ticket"
+            },
+            {
+              "name": "docname",
+              "value": "={{$('Create Inquiry Ticket API').first().json.name}}"
+            },
+            {
+              "name": "is_private",
+              "value": "1"
+            }
           ]
         },
         "options": {}

@@ -274,13 +274,7 @@
             "node": "Log Extraction AI Call",
             "type": "main",
             "index": 0
-          }
-        ]
-      ]
-    },
-    "Log Extraction AI Call": {
-      "main": [
-        [
+          },
           {
             "node": "Trigger Customer Matching & Creation",
             "type": "main",
@@ -648,7 +642,7 @@
           "conditions": [
             {
               "id": "cond-has-attachments",
-              "leftValue": "={{$('IMAP Email Trigger').first().json.attachments ? Object.keys($('IMAP Email Trigger').first().json.attachments).length : 0}}",
+              "leftValue": "={{ $('IMAP Email Trigger').first().binary ? Object.keys($('IMAP Email Trigger').first().binary).length : 0 }}",
               "operator": {
                 "operation": "greaterThan",
                 "type": "number"
@@ -677,13 +671,12 @@
     },
     {
       "parameters": {
-        "fieldToSplitOut": "attachments",
-        "options": {}
+        "jsCode": "const triggerData = $('IMAP Email Trigger').first();\nconst results = [];\n\nif (triggerData.binary) {\n  for (const key of Object.keys(triggerData.binary)) {\n    const file = triggerData.binary[key];\n    results.push({\n      json: {\n        filename: file.fileName || file.name || 'attachment',\n        mimeType: file.mimeType || '',\n        binaryKey: key\n      },\n      binary: {\n        attachment: file\n      }\n    });\n  }\n}\n\nreturn results;"
       },
       "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab1",
       "name": "Split Attachments Loop",
-      "type": "n8n-nodes-base.itemLists",
-      "typeVersion": 3.1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         1824,
         464
@@ -809,14 +802,12 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition",
-        "options": {}
+        "jsCode": "const ocrItems = [];\ntry {\n  ocrItems.push(...$('Parse Image OCR Output').all());\n} catch(e) {}\n\nconst docItems = [];\ntry {\n  docItems.push(...$('Format Document Text Output').all());\n} catch(e) {}\n\nreturn [...ocrItems, ...docItems];"
       },
       "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bee",
       "name": "Merge Extracted Text",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         2992,
         464
@@ -896,7 +887,7 @@
     },
     {
       "parameters": {
-        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\n\n// Get data from the appropriate upstream node\nlet payload;\ntry {\n  payload = $('Prepare LLM Payload').first().json;\n} catch(e) {\n  payload = $('Prepare Payload No Attachments').first().json;\n}\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    body: payload.body,\n    date: payload.date || '',\n    threadId: payload.threadId || '',\n    classification: payload.classification,\n    confidence: payload.confidence,\n    ai_provider: payload.ai_provider,\n    ai_model: payload.ai_model,\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  }\n}];"
+        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\n\n// Get data from the appropriate upstream node\nlet payload;\ntry {\n  payload = $('Prepare LLM Payload').first().json;\n} catch(e) {\n  payload = $('Prepare Payload No Attachments').first().json;\n}\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    body: payload.body,\n    date: payload.date || '',\n    threadId: payload.threadId || '',\n    classification: payload.classification,\n    confidence: payload.confidence,\n    ai_provider: payload.ai_provider,\n    ai_model: payload.ai_model,\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  },\n  binary: $('IMAP Email Trigger').first().binary\n}];"
       },
       "id": "83cf0cb2-fb4d-4d3e-8b2e-abcd874bcbef",
       "name": "Parse Extraction Output",
