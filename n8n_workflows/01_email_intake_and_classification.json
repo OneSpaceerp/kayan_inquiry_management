@@ -306,7 +306,8 @@
       "parameters": {
         "format": "resolved",
         "options": {
-          "allowUnauthorizedCerts": true
+          "allowUnauthorizedCerts": true,
+          "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 1}).toFormat('dd-LLL-yyyy')]]) }}"
         }
       },
       "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9001",
