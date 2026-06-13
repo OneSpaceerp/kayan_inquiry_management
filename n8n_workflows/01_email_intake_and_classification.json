@@ -468,7 +468,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"inquiry_type\": \"{{$json.classification}}\",\n  \"status\": \"Pending Review\",\n  \"ai_needs_review\": 1,\n  \"ai_classification\": \"{{$json.classification}}\",\n  \"ai_confidence\": {{$json.confidence}},\n  \"ai_provider\": \"{{$json.ai_provider}}\",\n  \"source_mailbox\": \"{{$json.to}}\",\n  \"original_email_subject\": \"{{$json.subject}}\",\n  \"contact_email\": \"{{$json.from}}\",\n  \"received_date\": \"{{$json.date}}\"\n}",
+        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries({ inquiry_type: $json.classification, status: 'Pending Review', ai_needs_review: 1, ai_classification: $json.classification, ai_confidence: $json.confidence, ai_provider: $json.ai_provider, source_mailbox: $json.to, original_email_subject: $json.subject, contact_email: $json.from, received_date: $json.date ? new Date($json.date).toISOString().replace('T', ' ').substring(0, 19) : undefined }).filter(([k, v]) => v !== null && v !== undefined && v !== ''))) }}",
         "options": {}
       },
       "id": "31b26ae3-02f8-4100-abef-ffde122a2bb3",
