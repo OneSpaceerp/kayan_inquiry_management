@@ -1,0 +1,32 @@
+# Normalise line endings across platforms.
+# The repo stores LF; Windows checkouts previously produced CRLF, which made
+# every n8n workflow JSON show as fully modified (2887 lines) with no real change.
+
+# Default: let Git decide what is text, always store and check out LF.
+* text=auto eol=lf
+
+# Explicit for the file types in this app.
+*.py      text eol=lf
+*.json    text eol=lf
+*.js      text eol=lf
+*.css     text eol=lf
+*.html    text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.toml    text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.cfg     text eol=lf
+
+# Binary — never touch.
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.svg     binary
+*.pdf     binary
+*.zip     binary
+*.rar     binary
+*.xlsx    binary
+*.xls     binary
+*.docx    binary
