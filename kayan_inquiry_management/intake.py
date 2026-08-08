@@ -287,8 +287,9 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	Idempotent on ``message_id``. Runs in the caller's transaction so a failure
 	part-way leaves nothing behind.
 
-	Returns ``{ticket, created, duplicate_of, assigned_to, manager,
-	resolution_method, status}``.
+	Returns ``{ticket, created, event, duplicate_of, assigned_to, manager,
+	resolution_method, status}`` where ``event`` is one of ``created``,
+	``reply`` or ``duplicate``.
 	"""
 	if not frappe.has_permission("Inquiry Ticket", "create"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
@@ -316,9 +317,47 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 		return {
 			"ticket": existing.name,
 			"created": False,
+			"event": "duplicate",
 			"duplicate_of": existing.name,
 			"resolution_method": resolution["method"],
 			"status": "duplicate",
+		}
+
+	# ---- 1b. Thread check ---------------------------------------------------
+	# The automation layer already runs this lookup before classifying, which is
+	# what keeps a reply from costing two LLM calls. It cannot be trusted as the
+	# only check: n8n evaluates a node for *every* item before moving to the next
+	# node, so when a thread's messages arrive in one IMAP poll the lookup runs
+	# against a database that does not yet contain the parent ticket -- it is
+	# created further down the same pass. Three messages of one conversation
+	# arriving together therefore produced three tickets.
+	#
+	# Repeating the check here fixes that, because ingestion is sequential and
+	# transactional: by the time the reply is ingested the parent is committed.
+	thread = find_inquiry_by_thread(
+		message_id=message_id,
+		in_reply_to=data.get("in_reply_to") or "",
+		references=data.get("references") or "",
+	)
+	if thread["found"]:
+		attach_email_to_ticket(
+			ticket=thread["ticket"],
+			message_id=message_id,
+			direction="Incoming",
+			subject=data.get("subject") or "",
+			email_from=(headers.get("from_email") or ""),
+			email_to=resolution["recipient"] or "",
+			thread_id=data.get("references") or "",
+			received_on=data.get("received_date") or "",
+		)
+		return {
+			"ticket": thread["ticket"],
+			"created": False,
+			"event": "reply",
+			"thread_match": thread["match"],
+			"assigned_to": thread.get("sales_engineer"),
+			"resolution_method": resolution["method"],
+			"status": "reply",
 		}
 
 	# ---- 2. Resolve owner and managers -------------------------------------
@@ -397,6 +436,7 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	return {
 		"ticket": ticket.name,
 		"created": True,
+		"event": "created",
 		"duplicate_of": None,
 		"assigned_to": owner_user,
 		"manager": responsible_manager,
