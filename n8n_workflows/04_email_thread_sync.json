@@ -1,6 +1,22 @@
 {
-  "name": "04_Email_Thread_Sync",
+  "name": "04_Email_Thread_Sync_RETIRED",
   "nodes": [
+    {
+      "parameters": {
+        "width": 720,
+        "height": 340,
+        "color": 3,
+        "content": "## RETIRED 2026-08-08\n\nReply threading moved into **01_Email_Intake_and_Classification**\n(`Find Thread` -> `Is Reply?` -> `Attach Reply to Ticket`).\n\n**Do not reactivate.** This workflow held a second IMAP trigger on the same\nINBOX as workflow 01. Two triggers on one mailbox race for the same messages,\nand whichever loses either misses mail or double-processes it.\n\nIt was also broken in four places and had never worked:\n\n1. `Lookup Existing Ticket by Thread API` passed Frappe ORM-style `filters` /\n   `fields` to `find_inquiry_by_message_id(message_id)` -- wrong signature, 500\n   on every call.\n2. `Thread Exists?` tested `$json.data.length`; the endpoint returns\n   `{message: {found, ticket}}`, so the test was always false.\n3. `Link Thread Email API` read `data[0].name` -- same wrong shape.\n4. `Run Main Email Intake Workflow` referenced the workflow by *filename*\n   rather than by n8n id.\n\nEven wired correctly it could not have worked: the lookup matched only\n`Message-ID`, and a reply carries a new one. Threading needs `In-Reply-To`\nand `References`, which `intake.find_inquiry_by_thread` now follows."
+      },
+      "id": "a1000000-0000-4000-8000-00000000f201",
+      "name": "RETIRED",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -260
+      ]
+    },
     {
       "parameters": {
         "postTriggerAction": "read",
@@ -23,7 +39,8 @@
           "id": "imap-cred-id",
           "name": "Kayan Domain IMAP Account"
         }
-      }
+      },
+      "disabled": true
     },
     {
       "parameters": {

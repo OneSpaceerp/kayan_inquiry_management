@@ -9,7 +9,7 @@
               "name": "ticket"
             },
             {
-              "name": "created"
+              "name": "event"
             },
             {
               "name": "assigned_to"
@@ -28,7 +28,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Only a newly created ticket needs files and a notification. A duplicate copy\n// of a BCC-distributed RFQ resolves to an existing ticket that already has both.\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  if (!j.ticket || j.created === false) continue;\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { out.push({ json: { ...j, _no_files: true } }); continue; }\n  for (const k of keys) out.push({ json: { ...j, _file_key: k, _file_name: bin[k].fileName }, binary: { [k]: bin[k] } });\n}\nreturn out;\n"
+        "jsCode": "\n// 'created' was a boolean, which conflated two different outcomes. A duplicate\n// copy of a BCC-distributed RFQ resolves to a ticket that already has the files\n// and the notification, and must be skipped -- but a customer *reply* also\n// resolves to an existing ticket, and it carries new attachments and needs the\n// owner told. One flag could not express both, so the reply path was silently\n// dropping mail.\nconst PROCESS = new Set(['created', 'reply']);\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  // Tolerate the old boolean while both workflow versions are in circulation.\n  const event = j.event || (j.created === false ? 'duplicate' : 'created');\n  if (!j.ticket || !PROCESS.has(event)) continue;\n\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { out.push({ json: { ...j, event, _has_files: false } }); continue; }\n  for (const k of keys) {\n    out.push({ json: { ...j, event, _has_files: true, _file_key: k, _file_name: bin[k].fileName },\n               binary: { [k]: bin[k] } });\n  }\n}\nreturn out;\n"
       },
       "id": "split-files",
       "name": "Split Files for Upload",
@@ -126,6 +126,39 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "hf1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json._has_files }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000f101",
+      "name": "Has Files?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
     }
   ],
   "connections": {
@@ -144,7 +177,7 @@
       "main": [
         [
           {
-            "node": "Upload File to Ticket",
+            "node": "Has Files?",
             "type": "main",
             "index": 0
           }
@@ -153,6 +186,24 @@
     },
     "Upload File to Ticket": {
       "main": [
+        [
+          {
+            "node": "Notify Sales Engineer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Files?": {
+      "main": [
+        [
+          {
+            "node": "Upload File to Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Notify Sales Engineer",

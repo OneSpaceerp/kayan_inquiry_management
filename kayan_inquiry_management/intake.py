@@ -26,6 +26,7 @@ concurrent n8n executions will race and create three tickets.
 """
 
 import json
+import re
 
 import frappe
 from frappe import _
@@ -138,14 +139,145 @@ def resolve_assignment(recipient_email: str, company: str | None = None) -> dict
 	}
 
 
+# RFC 5322 msg-id: "<" id-left "@" id-right ">". Header values arrive either
+# clean from n8n's resolved format or raw with the field name and folded
+# whitespace still attached, so parse both through the same regex.
+_MSGID_RE = re.compile(r"<[^<>\s]+@[^<>\s]+>")
+
+
+def _msgid_list(raw) -> list[str]:
+	"""Extract Message-IDs from a header value, preserving their order."""
+	if not raw:
+		return []
+	if isinstance(raw, (list, tuple)):
+		text = " ".join(str(x) for x in raw)
+	else:
+		text = str(raw)
+
+	found = _MSGID_RE.findall(text)
+	if not found:
+		# Some senders omit the angle brackets. Fall back to the bare token,
+		# but only when it still looks like a msg-id rather than prose.
+		bare = text.split(":", 1)[-1].strip()
+		if bare and "@" in bare and " " not in bare:
+			found = [f"<{bare.strip('<>')}>"]
+
+	seen, out = set(), []
+	for m in found:
+		if m not in seen:
+			seen.add(m)
+			out.append(m)
+	return out
+
+
+def _first_msgid(raw) -> str:
+	ids = _msgid_list(raw)
+	return ids[0] if ids else ""
+
+
+def _ticket_by_message_id(msgid: str) -> str | None:
+	"""The ticket whose *originating* email carries this Message-ID."""
+	return frappe.db.get_value("Inquiry Ticket", {"message_id": msgid}, "name")
+
+
+def _ticket_by_linked_email(msgid: str) -> str | None:
+	"""The ticket this Message-ID is already attached to as a follow-up."""
+	return frappe.db.get_value(
+		"Inquiry Email", {"message_id": msgid, "parenttype": "Inquiry Ticket"}, "parent"
+	)
+
+
 @frappe.whitelist()
-def find_inquiry_by_message_id(message_id: str) -> dict:
-	"""Look up an existing ticket by Message-ID. Used for dedup and threading."""
+def find_inquiry_by_thread(
+	message_id: str = "",
+	in_reply_to: str = "",
+	references: str = "",
+) -> dict:
+	"""Locate the ticket a message belongs to, following RFC 5322 threading.
+
+	The old ``find_inquiry_by_message_id`` could only match a message against
+	the ticket it *created*. A reply carries a brand-new Message-ID, so that
+	lookup always missed and every customer reply opened a second ticket.
+
+	Four probes, most specific first:
+
+	1. Own Message-ID against ``Inquiry Ticket.message_id`` — the same mail
+	   seen twice (a BCC copy, or a re-run of the same n8n execution).
+	2. Own Message-ID against the linked-email child table — already attached.
+	3. Ancestors from In-Reply-To and References against ticket originators.
+	4. Ancestors against the child table — a reply to a reply.
+
+	References is walked right-to-left because the rightmost entry is the
+	nearest ancestor; matching left-to-right would attach a long thread to
+	whichever mail happened to start it rather than the one being answered.
+
+	Both columns are indexed (``Inquiry Ticket.message_id`` carries a search
+	index, ``Inquiry Email.message_id`` is unique), so every probe is a key hit.
+	"""
 	if not frappe.has_permission("Inquiry Ticket", "read"):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	name = frappe.db.get_value("Inquiry Ticket", {"message_id": (message_id or "").strip()}, "name")
-	return {"found": bool(name), "ticket": name}
+	own = _first_msgid(message_id)
+
+	if own:
+		ticket = _ticket_by_message_id(own)
+		if ticket:
+			return _thread_result(ticket, "self", own)
+
+		ticket = _ticket_by_linked_email(own)
+		if ticket:
+			return _thread_result(ticket, "self_linked", own)
+
+	# Nearest ancestor first: In-Reply-To, then References right-to-left.
+	ancestors = _msgid_list(in_reply_to) + list(reversed(_msgid_list(references)))
+	seen = set()
+	for parent in ancestors:
+		if parent in seen:
+			continue
+		seen.add(parent)
+
+		ticket = _ticket_by_message_id(parent)
+		if ticket:
+			return _thread_result(ticket, "in_reply_to", parent)
+
+		ticket = _ticket_by_linked_email(parent)
+		if ticket:
+			return _thread_result(ticket, "references", parent)
+
+	return {"found": False, "ticket": None, "match": None, "matched_message_id": None}
+
+
+def _thread_result(ticket: str, match: str, matched_message_id: str) -> dict:
+	row = (
+		frappe.db.get_value(
+			"Inquiry Ticket",
+			ticket,
+			["name", "status", "sales_engineer", "responsible_manager", "company"],
+			as_dict=True,
+		)
+		or {}
+	)
+	return {
+		"found": True,
+		"ticket": ticket,
+		"match": match,
+		"matched_message_id": matched_message_id,
+		"status": row.get("status"),
+		"sales_engineer": row.get("sales_engineer"),
+		"responsible_manager": row.get("responsible_manager"),
+		"company": row.get("company"),
+	}
+
+
+@frappe.whitelist()
+def find_inquiry_by_message_id(message_id: str) -> dict:
+	"""Look up a ticket by Message-ID alone.
+
+	Retained for callers that only have the one header. New code should call
+	``find_inquiry_by_thread``, which also follows In-Reply-To and References.
+	"""
+	result = find_inquiry_by_thread(message_id=message_id)
+	return {"found": result["found"], "ticket": result["ticket"]}
 
 
 @frappe.whitelist()
@@ -164,7 +296,11 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	data = json.loads(payload) if isinstance(payload, str) else (payload or {})
 	settings = get_inquiry_settings()
 
-	message_id = (data.get("message_id") or "").strip()
+	# Normalise before storing. n8n's resolved format gives a clean "<id@host>",
+	# but the raw-header fallback yields "Message-ID:\n\t<id@host>". Storing the
+	# unnormalised form would make dedup and thread lookups miss each other,
+	# since find_inquiry_by_thread always compares the bracketed id.
+	message_id = _first_msgid(data.get("message_id")) or (data.get("message_id") or "").strip()
 	if not message_id:
 		frappe.throw(_("message_id is required for idempotent ingestion."))
 
@@ -291,8 +427,25 @@ def attach_email_to_ticket(
 
 	doc = frappe.get_doc("Inquiry Ticket", ticket)
 
+	# Same normalisation as ingest_inquiry_email, so the child table and the
+	# thread lookup are always comparing the identical bracketed form.
+	message_id = _first_msgid(message_id) or (message_id or "").strip()
+	thread_id = _first_msgid(thread_id) or (thread_id or "").strip()
+
 	if message_id and any((row.message_id or "") == message_id for row in doc.emails or []):
 		return {"ticket": ticket, "appended": False, "reason": "already linked"}
+
+	# Inquiry Email.message_id is globally unique, so a message already linked to
+	# a *different* ticket would raise DuplicateEntryError on save. Report it
+	# instead: it means the thread lookup and the caller disagree about ownership.
+	if message_id:
+		other = _ticket_by_linked_email(message_id)
+		if other and other != ticket:
+			return {
+				"ticket": other,
+				"appended": False,
+				"reason": f"already linked to {other}",
+			}
 
 	doc.append(
 		"emails",

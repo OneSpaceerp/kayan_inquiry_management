@@ -100,7 +100,7 @@
                 "type": "boolean",
                 "operation": "true"
               },
-              "leftValue": "={{ $json._noise }}",
+              "leftValue": "={{ $json._noise && !$json._thread_found }}",
               "rightValue": ""
             }
           ]
@@ -112,8 +112,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        680,
-        300
+        -112,
+        128
       ]
     },
     {
@@ -235,7 +235,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// The previous workflow sent every non-image attachment into a hard-coded PDF\n// extractor. Spreadsheets are the most common attachment here (BoQs), so that\n// path failed on the majority of real mail.\nconst out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { out.push({ json: { ...item.json, _att_kind: 'none' } }); continue; }\n\n  for (const key of keys) {\n    const f = bin[key];\n    const name = String(f.fileName || '').toLowerCase();\n    const ext  = name.split('.').pop() || '';\n    let kind = 'unknown';\n    if (['png','jpg','jpeg','gif','bmp','tif','tiff','webp'].includes(ext)) kind = 'image';\n    else if (ext === 'pdf')                                    kind = 'pdf';\n    else if (['xlsx','xlsm','xls','csv'].includes(ext))        kind = 'spreadsheet';\n    else if (['docx','doc','rtf','txt'].includes(ext))         kind = 'document';\n    else if (['zip','rar','7z'].includes(ext))                 kind = 'archive';\n\n    out.push({\n      json: { ...item.json, _att_key: key, _att_name: f.fileName, _att_ext: ext, _att_kind: kind },\n      binary: { [key]: f },\n    });\n  }\n}\nreturn out;\n"
+        "jsCode": "\n// The previous workflow sent every non-image attachment into a hard-coded PDF\n// extractor. Spreadsheets are the most common attachment here (BoQs), so that\n// path failed on the majority of real mail.\n//\n// Inline images are skipped. Almost every business email carries an embedded\n// signature logo referenced by cid: in the body; OCR'ing those wastes an LLM\n// call per message and returns nothing useful.\nconst body = String($json.text || $json.textPlain || '');\nconst out = [];\n\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { out.push({ json: { ...item.json, _att_kind: 'none' } }); continue; }\n\n  for (const key of keys) {\n    const f = bin[key];\n    const name = String(f.fileName || '').toLowerCase();\n    const ext  = name.split('.').pop() || '';\n    const size = Number(f.fileSize || 0);\n\n    // Signature/inline artwork: referenced by cid, or an unnamed small image.\n    const cid = String(f.cid || f.contentId || '').replace(/[<>]/g, '');\n    const isInline = (f.contentDisposition === 'inline')\n      || (cid && body.includes(cid))\n      || (/^image\\d*\\.(png|jpg|jpeg|gif)$/i.test(name));\n\n    let kind = 'unknown';\n    if (['png','jpg','jpeg','gif','bmp','tif','tiff','webp'].includes(ext)) kind = 'image';\n    else if (ext === 'pdf')                                    kind = 'pdf';\n    else if (['xlsx','xlsm','xls','csv'].includes(ext))        kind = 'spreadsheet';\n    else if (['docx','doc','rtf','txt'].includes(ext))         kind = 'document';\n    else if (['zip','rar','7z'].includes(ext))                 kind = 'archive';\n\n    if (kind === 'image' && isInline) {\n      out.push({ json: { ...item.json, _att_key: key, _att_name: f.fileName,\n                         _att_ext: ext, _att_kind: 'skipped',\n                         _skip_reason: 'inline signature image' } });\n      continue;\n    }\n\n    out.push({\n      json: { ...item.json, _att_key: key, _att_name: f.fileName, _att_ext: ext,\n              _att_kind: kind, _att_size: size },\n      binary: { [key]: f },\n    });\n  }\n}\nreturn out;\n"
       },
       "id": "route-attachments",
       "name": "Route Attachments",
@@ -463,7 +463,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Bills of Quantities run to hundreds of rows. Parsing them structurally rather\n// than feeding the whole sheet to the LLM keeps extraction affordable and\n// accurate; the model is reserved for unstructured bodies and scanned PDFs.\nconst HEADER_HINTS = {\n  description: ['description','item description','item','material','specification','desc','\u0628\u064a\u0627\u0646','\u0627\u0644\u0648\u0635\u0641'],\n  quantity:    ['qty','quantity','q-ty','amount','no.','count','\u0627\u0644\u0643\u0645\u064a\u0629'],\n  uom:         ['uom','unit','u/m','measure','\u0627\u0644\u0648\u062d\u062f\u0629'],\n  code:        ['code','item code','ref','reference','tag','item no','sn'],\n};\nconst norm = v => String(v ?? '').trim().toLowerCase();\nconst match = (cell, hints) => hints.some(h => norm(cell) === h || norm(cell).includes(h));\n\nconst rows = $input.all().map(i => i.json);\nif (!rows.length) return [{ json: { _boq_items: [], _boq_rows: 0 } }];\n\n// Find the header row: the first row where at least two hint groups match.\nlet headerIdx = -1, cols = {};\nfor (let i = 0; i < Math.min(rows.length, 25); i++) {\n  const vals = Object.values(rows[i]);\n  const found = {};\n  vals.forEach((v, idx) => {\n    for (const [field, hints] of Object.entries(HEADER_HINTS)) {\n      if (!(field in found) && match(v, hints)) found[field] = Object.keys(rows[i])[idx];\n    }\n  });\n  if (Object.keys(found).length >= 2) { headerIdx = i; cols = found; break; }\n}\n\nconst items = [];\nif (headerIdx >= 0) {\n  for (const r of rows.slice(headerIdx + 1)) {\n    const desc = cols.description ? String(r[cols.description] ?? '').trim() : '';\n    const qty  = cols.quantity    ? parseFloat(String(r[cols.quantity] ?? '').replace(/[^0-9.\\-]/g, '')) : null;\n    if (!desc || desc.length < 3) continue;\n    items.push({\n      description: desc,\n      quantity: Number.isFinite(qty) ? qty : null,\n      uom: cols.uom ? String(r[cols.uom] ?? '').trim() || null : null,\n      customer_item_code: cols.code ? String(r[cols.code] ?? '').trim() || null : null,\n      source: 'spreadsheet',\n    });\n  }\n}\nreturn [{ json: { _boq_items: items, _boq_rows: rows.length, _boq_header_row: headerIdx } }];\n"
+        "jsCode": "\n// Bills of Quantities run to hundreds of rows. Parsing them structurally rather\n// than feeding the whole sheet to the LLM keeps extraction affordable and\n// accurate; the model is reserved for unstructured bodies and scanned PDFs.\nconst HEADER_HINTS = {\n  description: ['description','item description','item','material','specification','desc','بيان','الوصف'],\n  quantity:    ['qty','quantity','q-ty','amount','no.','count','الكمية'],\n  uom:         ['uom','unit','u/m','measure','الوحدة'],\n  code:        ['code','item code','ref','reference','tag','item no','sn'],\n};\nconst norm = v => String(v ?? '').trim().toLowerCase();\nconst match = (cell, hints) => hints.some(h => norm(cell) === h || norm(cell).includes(h));\n\nconst rows = $input.all().map(i => i.json);\nif (!rows.length) return [{ json: { _boq_items: [], _boq_rows: 0 } }];\n\n// Find the header row: the first row where at least two hint groups match.\nlet headerIdx = -1, cols = {};\nfor (let i = 0; i < Math.min(rows.length, 25); i++) {\n  const vals = Object.values(rows[i]);\n  const found = {};\n  vals.forEach((v, idx) => {\n    for (const [field, hints] of Object.entries(HEADER_HINTS)) {\n      if (!(field in found) && match(v, hints)) found[field] = Object.keys(rows[i])[idx];\n    }\n  });\n  if (Object.keys(found).length >= 2) { headerIdx = i; cols = found; break; }\n}\n\nconst items = [];\nif (headerIdx >= 0) {\n  for (const r of rows.slice(headerIdx + 1)) {\n    const desc = cols.description ? String(r[cols.description] ?? '').trim() : '';\n    const qty  = cols.quantity    ? parseFloat(String(r[cols.quantity] ?? '').replace(/[^0-9.\\-]/g, '')) : null;\n    if (!desc || desc.length < 3) continue;\n    items.push({\n      description: desc,\n      quantity: Number.isFinite(qty) ? qty : null,\n      uom: cols.uom ? String(r[cols.uom] ?? '').trim() || null : null,\n      customer_item_code: cols.code ? String(r[cols.code] ?? '').trim() || null : null,\n      source: 'spreadsheet',\n    });\n  }\n}\nreturn [{ json: { _boq_items: items, _boq_rows: rows.length, _boq_header_row: headerIdx } }];\n"
       },
       "id": "parse-boq-spreadsheet",
       "name": "Parse BoQ Spreadsheet",
@@ -638,9 +638,9 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
-            "ticket": "={{ $json.ticket }}",
-            "created": "={{ $json.created }}",
-            "assigned_to": "={{ $json.assigned_to }}"
+            "ticket": "={{ $json.message.ticket }}",
+            "event": "={{ $json.message.created ? 'created' : 'duplicate' }}",
+            "assigned_to": "={{ $json.message.assigned_to }}"
           }
         },
         "options": {
@@ -654,6 +654,160 @@
       "position": [
         3760,
         640
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.intake.find_inquiry_by_thread",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "message_id",
+              "value": "={{ $json.messageId || $json.headers?.['message-id'] || '' }}"
+            },
+            {
+              "name": "in_reply_to",
+              "value": "={{ $json.inReplyTo || $json.headers?.['in-reply-to'] || '' }}"
+            },
+            {
+              "name": "references",
+              "value": "={{ [].concat($json.references || $json.headers?.references || []).join(' ') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000f001",
+      "name": "Find Thread",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -336,
+        240
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// The HTTP node returns only the API response and drops binary, so rebuild the\n// item from Pre-Filter Noise. Order is 1:1 -- httpRequest emits exactly one\n// output item per input item -- so index alignment is safe.\nconst src = $('Pre-Filter Noise').all();\nconst res = $input.all();\n\nreturn src.map((item, i) => {\n  let t = {};\n  try { t = res[i].json.message || {}; } catch (e) { t = {}; }\n  return {\n    json: { ...item.json,\n      _thread_found:  !!t.found,\n      _thread_ticket: t.ticket || null,\n      _thread_match:  t.match || null,\n      _thread_owner:  t.sales_engineer || null,\n      _thread_status: t.status || null,\n    },\n    binary: item.binary,\n  };\n});\n"
+      },
+      "id": "a1000000-0000-4000-8000-00000000f002",
+      "name": "Merge Thread Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "r1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json._thread_found }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000f003",
+      "name": "Is Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.intake.attach_email_to_ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ticket: $json._thread_ticket,message_id: $json.messageId || '',direction: $json._message_class === 'external' ? 'Incoming' : 'Outgoing',subject: $json.subject || '',email_from: $json._from_email || '',email_to: $json._recipient || '',thread_id: [].concat($json.references || []).join(' '),received_on: $json.headers?.['delivery-date'] || $json.date || ''}) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000f004",
+      "name": "Attach Reply to Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        224,
+        -32
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Cs28kkYtrJVo1wMM",
+          "mode": "id",
+          "cachedResultName": "03_Attach_Files_and_Notify"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket": "={{ $('Merge Thread Result').item.json._thread_ticket }}",
+            "event": "reply",
+            "assigned_to": "={{ $('Merge Thread Result').item.json._thread_owner }}"
+          }
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "a1000000-0000-4000-8000-00000000f005",
+      "name": "Trigger Attach & Notify (Reply)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        -32
       ]
     }
   ],
@@ -695,7 +849,7 @@
       "main": [
         [
           {
-            "node": "Is Noise?",
+            "node": "Find Thread",
             "type": "main",
             "index": 0
           }
@@ -713,7 +867,7 @@
         ],
         [
           {
-            "node": "Unwrap Forwarded Message",
+            "node": "Is Reply?",
             "type": "main",
             "index": 0
           }
@@ -948,6 +1102,57 @@
         [
           {
             "node": "Trigger Attach & Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Thread": {
+      "main": [
+        [
+          {
+            "node": "Merge Thread Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Thread Result": {
+      "main": [
+        [
+          {
+            "node": "Is Noise?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Reply?": {
+      "main": [
+        [
+          {
+            "node": "Attach Reply to Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unwrap Forwarded Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Reply to Ticket": {
+      "main": [
+        [
+          {
+            "node": "Trigger Attach & Notify (Reply)",
             "type": "main",
             "index": 0
           }
