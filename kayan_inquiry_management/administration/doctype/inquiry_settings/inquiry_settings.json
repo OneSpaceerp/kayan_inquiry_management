@@ -1,223 +1,275 @@
 {
-  "actions": [],
-  "creation": "2026-06-02 00:00:00",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "issingle": 1,
-  "field_order": [
-    "ai_section",
-    "confidence_threshold",
-    "default_ai_provider",
-    "preferred_language",
-    "column_break_ai",
-    "ai_api_url",
-    "ai_api_key",
-    "sla_section",
-    "assignment_sla_hours",
-    "technical_sla_hours",
-    "column_break_sla",
-    "quotation_sla_hours",
-    "sla_business_hours_only",
-    "notification_section",
-    "email_notifications_enabled",
-    "erp_notifications_enabled",
-    "escalation_section",
-    "escalation_direct_manager",
-    "escalation_sales_manager",
-    "column_break_escalation",
-    "escalation_department_manager",
-    "approval_section",
-    "approval_level_1_role",
-    "approval_level_2_role",
-    "column_break_approval",
-    "approval_level_3_role",
-    "approval_level_4_role"
-  ],
-  "fields": [
-    {
-      "fieldname": "ai_section",
-      "fieldtype": "Section Break",
-      "label": "AI Configuration"
-    },
-    {
-      "fieldname": "confidence_threshold",
-      "fieldtype": "Percent",
-      "label": "AI Confidence Threshold",
-      "default": "75",
-      "description": "Emails classified below this threshold go to the review queue."
-    },
-    {
-      "fieldname": "default_ai_provider",
-      "fieldtype": "Select",
-      "label": "Default AI Provider",
-      "options": "\nOpenAI\nGemini\nClaude\nLocal",
-      "default": "Gemini"
-    },
-    {
-      "fieldname": "preferred_language",
-      "fieldtype": "Select",
-      "label": "Preferred Language",
-      "options": "English\nArabic",
-      "default": "English",
-      "description": "Default language for AI processing and classification."
-    },
-    {
-      "fieldname": "column_break_ai",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "ai_api_url",
-      "fieldtype": "Data",
-      "label": "AI Platform API URL",
-      "description": "Base URL of the Kayan AI Platform (e.g. https://api.company.com/api/v1)"
-    },
-    {
-      "fieldname": "ai_api_key",
-      "fieldtype": "Password",
-      "label": "AI Platform API Key",
-      "description": "API key for authenticating with the AI platform."
-    },
-    {
-      "fieldname": "sla_section",
-      "fieldtype": "Section Break",
-      "label": "SLA Configuration"
-    },
-    {
-      "fieldname": "assignment_sla_hours",
-      "fieldtype": "Int",
-      "label": "Sales Assignment SLA (Hours)",
-      "default": "4",
-      "description": "Maximum hours to assign Application Engineer after inquiry creation."
-    },
-    {
-      "fieldname": "technical_sla_hours",
-      "fieldtype": "Int",
-      "label": "Technical Review SLA (Hours)",
-      "default": "24",
-      "description": "Maximum hours to complete technical review after assignment."
-    },
-    {
-      "fieldname": "column_break_sla",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "quotation_sla_hours",
-      "fieldtype": "Int",
-      "label": "Quotation Preparation SLA (Hours)",
-      "default": "48",
-      "description": "Maximum hours to prepare quotation after technical review."
-    },
-    {
-      "fieldname": "sla_business_hours_only",
-      "fieldtype": "Check",
-      "label": "Count Business Hours Only",
-      "default": "0",
-      "description": "If checked, SLA timers only count during working hours."
-    },
-    {
-      "fieldname": "notification_section",
-      "fieldtype": "Section Break",
-      "label": "Notifications"
-    },
-    {
-      "fieldname": "email_notifications_enabled",
-      "fieldtype": "Check",
-      "label": "Enable Email Notifications",
-      "default": "1"
-    },
-    {
-      "fieldname": "erp_notifications_enabled",
-      "fieldtype": "Check",
-      "label": "Enable ERP Notifications",
-      "default": "1"
-    },
-    {
-      "fieldname": "escalation_section",
-      "fieldtype": "Section Break",
-      "label": "Escalation Recipients"
-    },
-    {
-      "fieldname": "escalation_direct_manager",
-      "fieldtype": "Link",
-      "label": "Direct Manager (Level 1)",
-      "options": "User",
-      "description": "First escalation recipient for SLA breaches."
-    },
-    {
-      "fieldname": "escalation_sales_manager",
-      "fieldtype": "Link",
-      "label": "Sales Manager (Level 2)",
-      "options": "User",
-      "description": "Second escalation recipient for persistent SLA breaches."
-    },
-    {
-      "fieldname": "column_break_escalation",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "escalation_department_manager",
-      "fieldtype": "Link",
-      "label": "Department Manager (Level 3)",
-      "options": "User",
-      "description": "Third escalation recipient for critical SLA violations."
-    },
-    {
-      "fieldname": "approval_section",
-      "fieldtype": "Section Break",
-      "label": "Approval Configuration"
-    },
-    {
-      "fieldname": "approval_level_1_role",
-      "fieldtype": "Link",
-      "label": "Level 1 Approver Role",
-      "options": "Role",
-      "default": "Sales Manager",
-      "description": "Role for first-level quotation approval."
-    },
-    {
-      "fieldname": "approval_level_2_role",
-      "fieldtype": "Link",
-      "label": "Level 2 Approver Role",
-      "options": "Role",
-      "default": "Commercial Director",
-      "description": "Role for second-level quotation approval."
-    },
-    {
-      "fieldname": "column_break_approval",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "approval_level_3_role",
-      "fieldtype": "Link",
-      "label": "Level 3 Approver Role",
-      "options": "Role",
-      "default": "General Manager",
-      "description": "Role for third-level quotation approval."
-    },
-    {
-      "fieldname": "approval_level_4_role",
-      "fieldtype": "Link",
-      "label": "Level 4 Approver Role",
-      "options": "Role",
-      "description": "Role for fourth-level quotation approval (CEO / Board)."
-    }
-  ],
-  "links": [],
-  "modified": "2026-06-02 00:00:00",
-  "modified_by": "Administrator",
-  "module": "Administration",
-  "name": "Inquiry Settings",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "role": "System Manager",
-      "read": 1,
-      "write": 1,
-      "create": 1
-    }
-  ],
-  "sort_field": "creation",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "creation": "2026-06-02 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "ai_section",
+  "confidence_threshold",
+  "default_ai_provider",
+  "preferred_language",
+  "column_break_ai",
+  "ai_api_url",
+  "ai_api_key",
+  "sla_section",
+  "assignment_sla_hours",
+  "technical_sla_hours",
+  "column_break_sla",
+  "quotation_sla_hours",
+  "sla_business_hours_only",
+  "notification_section",
+  "email_notifications_enabled",
+  "erp_notifications_enabled",
+  "intake_section",
+  "forwarding_mailbox",
+  "internal_domains",
+  "column_break_intake",
+  "supplier_domains",
+  "noise_sender_patterns",
+  "backfill_mode",
+  "escalation_section",
+  "escalation_direct_manager",
+  "escalation_sales_manager",
+  "column_break_escalation",
+  "escalation_department_manager",
+  "approval_section",
+  "approval_level_1_role",
+  "approval_level_2_role",
+  "column_break_approval",
+  "approval_level_3_role",
+  "approval_level_4_role"
+ ],
+ "fields": [
+  {
+   "fieldname": "ai_section",
+   "fieldtype": "Section Break",
+   "label": "AI Configuration"
+  },
+  {
+   "fieldname": "confidence_threshold",
+   "fieldtype": "Percent",
+   "label": "AI Confidence Threshold",
+   "default": "75",
+   "description": "Emails classified below this threshold go to the review queue."
+  },
+  {
+   "fieldname": "default_ai_provider",
+   "fieldtype": "Select",
+   "label": "Default AI Provider",
+   "options": "\nOpenAI\nGemini\nClaude\nLocal",
+   "default": "Gemini"
+  },
+  {
+   "fieldname": "preferred_language",
+   "fieldtype": "Select",
+   "label": "Preferred Language",
+   "options": "English\nArabic",
+   "default": "English",
+   "description": "Default language for AI processing and classification."
+  },
+  {
+   "fieldname": "column_break_ai",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ai_api_url",
+   "fieldtype": "Data",
+   "label": "AI Platform API URL",
+   "description": "Base URL of the Kayan AI Platform (e.g. https://api.company.com/api/v1)"
+  },
+  {
+   "fieldname": "ai_api_key",
+   "fieldtype": "Password",
+   "label": "AI Platform API Key",
+   "description": "API key for authenticating with the AI platform."
+  },
+  {
+   "fieldname": "sla_section",
+   "fieldtype": "Section Break",
+   "label": "SLA Configuration"
+  },
+  {
+   "fieldname": "assignment_sla_hours",
+   "fieldtype": "Int",
+   "label": "Sales Assignment SLA (Hours)",
+   "default": "4",
+   "description": "Maximum hours to assign Application Engineer after inquiry creation."
+  },
+  {
+   "fieldname": "technical_sla_hours",
+   "fieldtype": "Int",
+   "label": "Technical Review SLA (Hours)",
+   "default": "24",
+   "description": "Maximum hours to complete technical review after assignment."
+  },
+  {
+   "fieldname": "column_break_sla",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "quotation_sla_hours",
+   "fieldtype": "Int",
+   "label": "Quotation Preparation SLA (Hours)",
+   "default": "48",
+   "description": "Maximum hours to prepare quotation after technical review."
+  },
+  {
+   "fieldname": "sla_business_hours_only",
+   "fieldtype": "Check",
+   "label": "Count Business Hours Only",
+   "default": "0",
+   "description": "If checked, SLA timers only count during working hours."
+  },
+  {
+   "fieldname": "notification_section",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "fieldname": "email_notifications_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Email Notifications",
+   "default": "1"
+  },
+  {
+   "fieldname": "erp_notifications_enabled",
+   "fieldtype": "Check",
+   "label": "Enable ERP Notifications",
+   "default": "1"
+  },
+  {
+   "fieldname": "intake_section",
+   "fieldtype": "Section Break",
+   "label": "Email Intake & Noise Filtering",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "forwarding_mailbox",
+   "fieldtype": "Data",
+   "label": "Forwarding Mailbox",
+   "default": "inquiries-inbox@kayan-eg.net",
+   "description": "The central intake mailbox. Never used for assignment; an Envelope-to equal to this value means the mail was sent here directly rather than forwarded."
+  },
+  {
+   "fieldname": "internal_domains",
+   "fieldtype": "Small Text",
+   "label": "Internal Domains",
+   "default": "kayan-eg.net\nkayan-eg.com",
+   "description": "One per line. Senders on these domains are treated as internal (manual forwards or internal correspondence), not as customer inquiries."
+  },
+  {
+   "fieldname": "column_break_intake",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "supplier_domains",
+   "fieldtype": "Small Text",
+   "label": "Supplier Domains",
+   "default": "ebara.com\nsystemair.com.tr\nsystemair.de\nhoneywell.com\nomemotors.com",
+   "description": "One per line. Kayan's principals and suppliers. Their mail resembles a customer RFQ but must not create inquiry tickets."
+  },
+  {
+   "fieldname": "noise_sender_patterns",
+   "fieldtype": "Small Text",
+   "label": "Noise Sender Patterns",
+   "default": "support@kayan-eg.net\nno-reply@\nnoreply@\nmailer-daemon@\npostmaster@",
+   "description": "One per line, matched as a substring of the From address. support@kayan-eg.net is critical: ERPNext's own notifications forward back into the intake mailbox and would otherwise loop."
+  },
+  {
+   "fieldname": "backfill_mode",
+   "fieldtype": "Check",
+   "label": "Backfill Mode",
+   "default": "0",
+   "description": "Suppresses notifications and SLA timers while importing historical email. Leave off in normal operation."
+  },
+  {
+   "fieldname": "escalation_section",
+   "fieldtype": "Section Break",
+   "label": "Escalation Recipients"
+  },
+  {
+   "fieldname": "escalation_direct_manager",
+   "fieldtype": "Link",
+   "label": "Direct Manager (Level 1)",
+   "options": "User",
+   "description": "First escalation recipient for SLA breaches."
+  },
+  {
+   "fieldname": "escalation_sales_manager",
+   "fieldtype": "Link",
+   "label": "Sales Manager (Level 2)",
+   "options": "User",
+   "description": "Second escalation recipient for persistent SLA breaches."
+  },
+  {
+   "fieldname": "column_break_escalation",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "escalation_department_manager",
+   "fieldtype": "Link",
+   "label": "Department Manager (Level 3)",
+   "options": "User",
+   "description": "Third escalation recipient for critical SLA violations."
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Approval Configuration"
+  },
+  {
+   "fieldname": "approval_level_1_role",
+   "fieldtype": "Link",
+   "label": "Level 1 Approver Role",
+   "options": "Role",
+   "default": "Sales Manager",
+   "description": "Role for first-level quotation approval."
+  },
+  {
+   "fieldname": "approval_level_2_role",
+   "fieldtype": "Link",
+   "label": "Level 2 Approver Role",
+   "options": "Role",
+   "default": "Commercial Director",
+   "description": "Role for second-level quotation approval."
+  },
+  {
+   "fieldname": "column_break_approval",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approval_level_3_role",
+   "fieldtype": "Link",
+   "label": "Level 3 Approver Role",
+   "options": "Role",
+   "default": "General Manager",
+   "description": "Role for third-level quotation approval."
+  },
+  {
+   "fieldname": "approval_level_4_role",
+   "fieldtype": "Link",
+   "label": "Level 4 Approver Role",
+   "options": "Role",
+   "description": "Role for fourth-level quotation approval (CEO / Board)."
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-02 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Administration",
+ "name": "Inquiry Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

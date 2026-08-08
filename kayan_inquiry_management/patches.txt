@@ -1,3 +1,5 @@
 [pre_model_sync]
 
 [post_model_sync]
+kayan_inquiry_management.patches.v1_0.backfill_intake_fields
+kayan_inquiry_management.patches.v1_0.seed_assignment_rules_from_employee

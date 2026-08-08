@@ -14,6 +14,11 @@ class InquirySettings(Document):
 		from frappe.types import DF
 
 		ai_api_key: DF.Password | None
+		backfill_mode: DF.Check
+		forwarding_mailbox: DF.Data | None
+		internal_domains: DF.SmallText | None
+		noise_sender_patterns: DF.SmallText | None
+		supplier_domains: DF.SmallText | None
 		ai_api_url: DF.Data | None
 		approval_level_1_role: DF.Link | None
 		approval_level_2_role: DF.Link | None

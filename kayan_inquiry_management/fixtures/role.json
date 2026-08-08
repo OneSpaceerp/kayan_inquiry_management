@@ -1,0 +1,58 @@
+[
+ {
+  "doctype": "Role",
+  "name": "Sales Engineer",
+  "role_name": "Sales Engineer",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "Application Engineer",
+  "role_name": "Application Engineer",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "Inquiry Coordinator",
+  "role_name": "Inquiry Coordinator",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "Sales Manager",
+  "role_name": "Sales Manager",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "Commercial Director",
+  "role_name": "Commercial Director",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "Department Manager",
+  "role_name": "Department Manager",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ },
+ {
+  "doctype": "Role",
+  "name": "General Manager",
+  "role_name": "General Manager",
+  "desk_access": 1,
+  "disabled": 0,
+  "is_custom": 1
+ }
+]

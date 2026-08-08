@@ -55,6 +55,8 @@ class InquiryTicket(Document):
 		company: DF.Link
 		company_name: DF.Data | None
 		contact_email: DF.Data | None
+		contact_first_name: DF.Data | None
+		contact_last_name: DF.Data | None
 		contact_person: DF.Data | None
 		contact_phone: DF.Data | None
 		currency: DF.Link | None
@@ -67,16 +69,32 @@ class InquiryTicket(Document):
 		estimated_value: DF.Currency
 		inquiry_coordinator: DF.Link | None
 		inquiry_type: DF.Literal["", "RFQ", "Quotation Request", "Tender", "Budget Request", "Commercial Inquiry", "RFP"]
+		forwarding_mailbox: DF.Data | None
 		lead: DF.Link | None
 		line_items: DF.Table[InquiryLineItem]
 		lost_reason: DF.Link | None
+		message_id: DF.Data | None
 		naming_series: DF.Literal["INQ-.YYYY.-.#####"]
 		opportunity: DF.Link | None
 		original_email_subject: DF.Data | None
+		original_recipient: DF.Data | None
+		original_recipients: DF.SmallText | None
+		original_sent_date: DF.Datetime | None
 		outcome_remarks: DF.Text | None
 		priority: DF.Literal["Low", "Medium", "High", "Urgent"]
 		quotation_count: DF.Int
 		received_date: DF.Datetime | None
+		recipient_resolution_method: DF.Literal[
+			"",
+			"Envelope-To",
+			"Received-For",
+			"Bcc",
+			"To Header",
+			"Cc Header",
+			"Manual Forward Sender",
+			"Unresolved",
+		]
+		responsible_manager: DF.Link | None
 		revision_count: DF.Int
 		revisions: DF.Table[InquiryRevision]
 		sales_engineer: DF.Link | None

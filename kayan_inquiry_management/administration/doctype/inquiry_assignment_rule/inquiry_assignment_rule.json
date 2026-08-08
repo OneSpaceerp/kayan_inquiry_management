@@ -1,0 +1,108 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:user",
+  "creation": "2026-08-08 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "user",
+    "employee",
+    "column_break_1",
+    "company",
+    "active",
+    "priority",
+    "section_break_managers",
+    "managers"
+  ],
+  "fields": [
+    {
+      "fieldname": "user",
+      "fieldtype": "Link",
+      "label": "User",
+      "options": "User",
+      "reqd": 1,
+      "unique": 1,
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "The ERPNext User who owns inquiries. Managers below are notified and used for SLA escalation."
+    },
+    {
+      "fieldname": "employee",
+      "fieldtype": "Link",
+      "label": "Employee",
+      "options": "Employee",
+      "in_list_view": 1,
+      "description": "Informational only. Seeded from Employee.reports_to at bootstrap; this rule is authoritative thereafter."
+    },
+    {
+      "fieldname": "column_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "description": "Leave blank to apply to all companies."
+    },
+    {
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "label": "Active",
+      "default": "1",
+      "in_list_view": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Int",
+      "label": "Priority",
+      "default": "10",
+      "description": "Lower wins when more than one rule could apply. Reserved for future rule types."
+    },
+    {
+      "fieldname": "section_break_managers",
+      "fieldtype": "Section Break",
+      "label": "Managers"
+    },
+    {
+      "fieldname": "managers",
+      "fieldtype": "Table",
+      "label": "Managers",
+      "options": "Inquiry Assignment Manager",
+      "reqd": 1
+    }
+  ],
+  "links": [],
+  "modified": "2026-08-08 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Administration",
+  "name": "Inquiry Assignment Rule",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "report": 1,
+      "export": 1
+    },
+    {
+      "role": "Sales Manager",
+      "read": 1,
+      "report": 1
+    }
+  ],
+  "sort_field": "creation",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1,
+  "title_field": "user",
+  "search_fields": "user,company"
+}

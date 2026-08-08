@@ -1,0 +1,25 @@
+{
+  "actions": [],
+  "creation": "2026-08-08 00:00:00",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "istable": 1,
+  "editable_grid": 1,
+  "field_order": ["manager", "manager_role", "escalation_level", "notify_on_assignment"],
+  "fields": [
+    {"fieldname": "manager", "fieldtype": "Link", "label": "Manager", "options": "User", "reqd": 1, "in_list_view": 1, "columns": 4},
+    {"fieldname": "manager_role", "fieldtype": "Select", "label": "Manager Role", "options": "Direct Manager\nSales Manager\nDepartment Manager\nEscalation Only", "default": "Direct Manager", "reqd": 1, "in_list_view": 1, "columns": 3},
+    {"fieldname": "escalation_level", "fieldtype": "Int", "label": "Escalation Level", "default": "1", "in_list_view": 1, "columns": 2, "description": "Order in the SLA escalation chain. 1 is contacted first."},
+    {"fieldname": "notify_on_assignment", "fieldtype": "Check", "label": "Notify on Assignment", "default": "0", "in_list_view": 1, "columns": 2, "description": "Copy this manager on the new-inquiry notification, not just on escalation."}
+  ],
+  "links": [],
+  "modified": "2026-08-08 00:00:00",
+  "modified_by": "Administrator",
+  "module": "Administration",
+  "name": "Inquiry Assignment Manager",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "escalation_level",
+  "sort_order": "ASC",
+  "states": []
+}

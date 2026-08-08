@@ -29,13 +29,116 @@ def create_audit_event(
 
 
 def get_sales_engineer_for_mailbox(mailbox: str) -> str | None:
-	"""Look up the Sales Engineer mapped to the given mailbox address."""
-	result = frappe.db.get_value(
+	"""Resolve the User who owns inquiries received at ``mailbox``.
+
+	Resolution order:
+
+	1. **Mailbox Mapping** — the override table. Use it for shared or functional
+	   mailboxes (sales@, info@, tenders@) and for any case where the recipient
+	   should not be the owner.
+	2. **Direct User lookup** — ERPNext User IDs at Kayan *are* the email
+	   addresses, so ``yousef.tharwat@kayan-eg.net`` is both the recipient and the
+	   User id. This makes the common case a primary-key hit and removes the need
+	   to pre-populate a mapping row for all ~35-40 staff mailboxes.
+
+	Returns None when neither resolves, which the caller must treat as "route to
+	review" rather than guessing an owner.
+	"""
+	if not mailbox:
+		return None
+
+	mailbox = mailbox.strip().lower()
+
+	mapped = frappe.db.get_value(
 		"Mailbox Mapping",
 		{"mailbox": mailbox, "active": 1},
 		"sales_engineer",
 	)
-	return result
+	if mapped:
+		return mapped
+
+	if frappe.db.exists("User", {"name": mailbox, "enabled": 1}):
+		return mailbox
+
+	return None
+
+
+def get_managers_for_user(user: str, company: str | None = None) -> list[dict]:
+	"""Return the manager/escalation chain for ``user``, lowest level first.
+
+	Order of precedence:
+
+	1. Inquiry Assignment Rule scoped to the user AND company
+	2. Inquiry Assignment Rule scoped to the user with no company
+	3. The global escalation defaults in Inquiry Settings
+
+	Returns an empty list if nothing resolves — callers should log that rather
+	than silently proceeding with no escalation path.
+	"""
+	if not user:
+		return []
+
+	rule_name = None
+	if company:
+		rule_name = frappe.db.get_value(
+			"Inquiry Assignment Rule", {"user": user, "company": company, "active": 1}, "name"
+		)
+	if not rule_name:
+		rule_name = frappe.db.get_value(
+			"Inquiry Assignment Rule", {"user": user, "company": ["in", ["", None]], "active": 1}, "name"
+		)
+	if not rule_name:
+		rule_name = frappe.db.get_value("Inquiry Assignment Rule", {"user": user, "active": 1}, "name")
+
+	if rule_name:
+		rule = frappe.get_cached_doc("Inquiry Assignment Rule", rule_name)
+		rows = sorted(rule.managers or [], key=lambda r: r.escalation_level or 0)
+		return [
+			{
+				"manager": r.manager,
+				"manager_role": r.manager_role,
+				"escalation_level": r.escalation_level or 0,
+				"notify_on_assignment": bool(r.notify_on_assignment),
+				"source": "Inquiry Assignment Rule",
+			}
+			for r in rows
+		]
+
+	# Fall back to the org-wide defaults already configured in Inquiry Settings.
+	settings = get_inquiry_settings()
+	if not settings:
+		return []
+
+	defaults = [
+		(settings.get("escalation_direct_manager"), "Direct Manager", 1),
+		(settings.get("escalation_sales_manager"), "Sales Manager", 2),
+		(settings.get("escalation_department_manager"), "Department Manager", 3),
+	]
+	return [
+		{
+			"manager": mgr,
+			"manager_role": role,
+			"escalation_level": level,
+			"notify_on_assignment": False,
+			"source": "Inquiry Settings",
+		}
+		for mgr, role, level in defaults
+		if mgr and mgr != user
+	]
+
+
+def get_internal_domains() -> set[str]:
+	"""Domains treated as internal to Kayan."""
+	settings = get_inquiry_settings()
+	raw = (settings.get("internal_domains") if settings else "") or "kayan-eg.net"
+	return {d.strip().lower().lstrip("@") for d in raw.splitlines() if d.strip()}
+
+
+def is_internal_address(email: str) -> bool:
+	"""True when ``email`` belongs to a Kayan domain."""
+	if not email or "@" not in email:
+		return False
+	return email.strip().lower().rsplit("@", 1)[-1] in get_internal_domains()
 
 
 def get_company_for_domain(email_domain: str) -> str | None:
