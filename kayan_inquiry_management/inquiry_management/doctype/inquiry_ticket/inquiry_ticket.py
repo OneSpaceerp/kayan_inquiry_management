@@ -125,15 +125,50 @@ class InquiryTicket(Document):
 		self._start_assignment_sla()
 
 	def validate(self):
-		"""Run all validation before save."""
+		"""Run all validation before save.
+
+		BUGFIX (review finding C-1): the previous status must be captured *here*,
+		while the database still holds the old value. ``on_update()`` runs after the
+		write, so ``get_db_value("status")`` there always returned the NEW status,
+		making every downstream comparison a no-op. The consequences were silent:
+		no status history rows, no status-change audit events, technical and
+		quotation SLA deadlines never set, and ``sla_status`` never reaching "Met".
+		"""
+		self._previous_status = None if self.is_new() else self.get_db_value("status")
+
 		self._validate_status_transition()
 		self._validate_outcome_fields()
 		self._validate_assignments()
+		self._validate_approval_chain()
+
+		# BUGFIX (review finding C-2): append the history row during validate so the
+		# normal save cycle persists it. The old code appended in on_update() and
+		# called db_update(), which writes parent columns only — the child row was
+		# silently discarded and never reached `tabInquiry Status History`.
+		if self._previous_status and self._previous_status != self.status:
+			self.append(
+				"status_history",
+				{
+					"old_status": self._previous_status,
+					"new_status": self.status,
+					"changed_by": frappe.session.user,
+					"changed_on": frappe.utils.now_datetime(),
+				},
+			)
 
 	def on_update(self):
-		"""After save — record status changes and audit events."""
-		self._record_status_change()
-		self._update_sla_on_transition()
+		"""After save — write the audit trail and advance SLA timers."""
+		previous_status = getattr(self, "_previous_status", None)
+		if not previous_status or previous_status == self.status:
+			return
+
+		create_audit_event(
+			entity_type="Inquiry Ticket",
+			entity_id=self.name,
+			action=f"Status Changed: {previous_status} → {self.status}",
+			details=f"Status changed from '{previous_status}' to '{self.status}' by {frappe.session.user}",
+		)
+		self._update_sla_on_transition(previous_status)
 
 	def _validate_status_transition(self):
 		"""Enforce valid status transitions per the workflow specification."""
@@ -158,6 +193,49 @@ class InquiryTicket(Document):
 		if self.status == "Cancelled" and not self.cancellation_reason:
 			frappe.throw(_("Cancellation Reason is required when cancelling an inquiry."))
 
+	def _validate_approval_chain(self):
+		"""Refuse to reach Approved without a completed approval chain.
+
+		SECURITY (review finding S-7 / risk SR-04): the approval chain lived
+		entirely in n8n workflow 06. Because ``VALID_TRANSITIONS`` permits
+		Pending Approval → Approved, anyone with write access could set the status
+		directly and self-approve. Nothing server-side stopped it.
+
+		Enforcement rules:
+		  * at least one Inquiry Approval row must carry decision "Approved"
+		  * no row may still be awaiting a decision
+		  * no row may carry decision "Rejected"
+
+		NOTE: value-based thresholds (FR-21) are not enforced yet — Inquiry Settings
+		defines approval_level_1..4_role but has no threshold amount fields. Those
+		arrive with Workstream B3, after which this method should additionally
+		require an Approved row for every level triggered by estimated_value.
+		"""
+		previous_status = getattr(self, "_previous_status", None)
+		if previous_status != "Pending Approval" or self.status != "Approved":
+			return
+
+		approvals = list(self.approvals or [])
+		if not approvals:
+			frappe.throw(
+				_("Cannot approve {0}: no approval records exist. The approval chain must be completed first.").format(
+					self.name
+				)
+			)
+
+		rejected = [a for a in approvals if a.decision == "Rejected"]
+		if rejected:
+			levels = ", ".join(str(a.level) for a in rejected)
+			frappe.throw(_("Cannot approve: approval was rejected at level {0}.").format(levels))
+
+		pending = [a for a in approvals if not a.decision or a.decision not in ("Approved", "Rejected")]
+		if pending:
+			levels = ", ".join(str(a.level) for a in pending)
+			frappe.throw(_("Cannot approve: approval is still outstanding at level {0}.").format(levels))
+
+		if not any(a.decision == "Approved" for a in approvals):
+			frappe.throw(_("Cannot approve: no level has been approved."))
+
 	def _validate_assignments(self):
 		"""Ensure at least one active assignment when status requires it."""
 		if self.status in [
@@ -173,33 +251,6 @@ class InquiryTicket(Document):
 					)
 				)
 
-	def _record_status_change(self):
-		"""Append a record to status_history when status changes."""
-		if self.is_new():
-			return
-
-		old_status = self.get_db_value("status")
-		if old_status and old_status != self.status:
-			# Append status history row
-			self.append(
-				"status_history",
-				{
-					"old_status": old_status,
-					"new_status": self.status,
-					"changed_by": frappe.session.user,
-					"changed_on": frappe.utils.now_datetime(),
-				},
-			)
-			self.db_update()
-
-			# Create audit event for the transition
-			create_audit_event(
-				entity_type="Inquiry Ticket",
-				entity_id=self.name,
-				action=f"Status Changed: {old_status} → {self.status}",
-				details=f"Status changed from '{old_status}' to '{self.status}' by {frappe.session.user}",
-			)
-
 	def _start_assignment_sla(self):
 		"""Start the assignment SLA timer on new inquiry creation."""
 		settings = get_inquiry_settings()
@@ -208,13 +259,13 @@ class InquiryTicket(Document):
 			self.sla_assignment_deadline = calculate_sla_deadline(now, settings.assignment_sla_hours)
 			self.sla_status = "Active"
 
-	def _update_sla_on_transition(self):
-		"""Start/stop SLA timers based on status transitions."""
-		if self.is_new():
-			return
+	def _update_sla_on_transition(self, previous_status: str | None = None):
+		"""Start/stop SLA timers based on status transitions.
 
-		old_status = self.get_db_value("status")
-		if old_status == self.status:
+		``previous_status`` is passed in from ``on_update()`` (captured during
+		validate). It must NOT be re-read from the database here — see C-1.
+		"""
+		if self.is_new() or not previous_status or previous_status == self.status:
 			return
 
 		settings = get_inquiry_settings()
@@ -279,15 +330,12 @@ class InquiryTicket(Document):
 
 
 # ------------------------------------------------------------------
-# Hook functions referenced in hooks.py doc_events
+# NOTE (review finding C-3): the previous `validate_transition` and
+# `on_update_audit` wrappers were registered in hooks.py doc_events AND
+# duplicated logic the controller's own validate()/on_update() already ran.
+# Frappe executes both the controller method and the hook, so everything fired
+# twice. That was harmless only while C-1 made the on_update path a no-op; with
+# C-1 fixed it would have produced duplicate history rows and audit events.
+# The doc_events entry for "Inquiry Ticket" has been removed from hooks.py and
+# these wrappers deleted. Controller methods are the single source of truth.
 # ------------------------------------------------------------------
-
-
-def validate_transition(doc, method):
-	"""Called from hooks.py doc_events → Inquiry Ticket → validate."""
-	doc._validate_status_transition()
-
-
-def on_update_audit(doc, method):
-	"""Called from hooks.py doc_events → Inquiry Ticket → on_update."""
-	doc._record_status_change()

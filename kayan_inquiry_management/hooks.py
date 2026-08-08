@@ -18,11 +18,11 @@ required_apps = ["erpnext"]
 # --------------------------------------------------------------------------
 # Document events — react to events on custom and standard DocTypes
 # --------------------------------------------------------------------------
+# NOTE (review finding C-3): the "Inquiry Ticket" entry was removed here.
+# Frappe already runs the InquiryTicket controller's own validate() and
+# on_update(); registering hooks that called the same private methods made every
+# status change process twice. The controller is now the single source of truth.
 doc_events = {
-	"Inquiry Ticket": {
-		"validate": "kayan_inquiry_management.inquiry_management.doctype.inquiry_ticket.inquiry_ticket.validate_transition",
-		"on_update": "kayan_inquiry_management.inquiry_management.doctype.inquiry_ticket.inquiry_ticket.on_update_audit",
-	},
 	"Opportunity": {
 		"validate": "kayan_inquiry_management.api.clean_opportunity_links",
 	},

@@ -5,13 +5,27 @@ import frappe
 from frappe import _
 
 
-def inquiry_ticket_query_conditions(user):
+def inquiry_ticket_query_conditions(user=None):
 	"""Return SQL conditions for company-based filtering of Inquiry Tickets.
 
 	- System Manager and CEO: see all companies
 	- Other roles: see only companies assigned to the user
 	- Sales Engineer: see only owned inquiries (within their companies)
 	- Application Engineer: see only assigned inquiries (within their companies)
+
+	SECURITY (review findings S-4, S-5):
+
+	S-4 — this function previously **failed open**: a user with no Company
+	``User Permission`` fell through to ``return ""``, granting visibility of every
+	company's inquiries. That is the opposite of the intended behaviour and
+	contradicts RPM section 9. It now fails closed.
+
+	S-5 — company names and the user id were interpolated into raw SQL with
+	f-strings. A value containing an apostrophe would break the query, and the
+	pattern is injection-shaped. All values now go through ``frappe.db.escape``.
+
+	DEPLOYMENT NOTE: failing closed means any user lacking a Company User
+	Permission sees zero tickets. Audit User Permission coverage before shipping.
 	"""
 	if not user:
 		user = frappe.session.user
@@ -33,15 +47,15 @@ def inquiry_ticket_query_conditions(user):
 	)
 
 	if not user_companies:
-		# Fallback: user has no company restrictions, allow all
-		return ""
+		# Fail CLOSED. No company grant means no visibility.
+		return "1=0"
 
-	companies_str = ", ".join(f"'{c}'" for c in user_companies)
+	companies_str = ", ".join(frappe.db.escape(c) for c in user_companies)
 	conditions = f"`tabInquiry Ticket`.company IN ({companies_str})"
 
 	# Sales Engineer: further restrict to owned inquiries (unless Sales Manager+)
 	if "Sales Engineer" in roles and "Sales Manager" not in roles:
-		conditions += f" AND `tabInquiry Ticket`.sales_engineer = '{user}'"
+		conditions += f" AND `tabInquiry Ticket`.sales_engineer = {frappe.db.escape(user)}"
 
 	return conditions
 

@@ -101,25 +101,27 @@ def create_revision(inquiry_name: str, reason: str) -> dict:
 	return {"revision_no": revision_no, "status": "Requested"}
 
 
-@frappe.whitelist(allow_guest=True)
-def inspect_headers() -> dict:
-	"""Inspect request headers."""
-	return dict(frappe.request.headers) if hasattr(frappe, "request") and frappe.request else {}
-
-
 @frappe.whitelist()
 def get_ai_settings() -> dict:
-	"""Return AI configuration settings including decrypted API key."""
+	"""Return non-secret AI configuration for the automation layer.
+
+	SECURITY (review finding S-2): this method previously returned the decrypted
+	``ai_api_key`` to *any* authenticated user. With 32 enabled staff accounts that
+	made the OpenRouter key readable by the whole company.
+
+	The key is never returned. n8n authenticates to the AI provider using its own
+	stored credential; ERPNext only supplies routing/tuning configuration.
+	"""
 	if not frappe.session.user or frappe.session.user == "Guest":
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	settings = frappe.get_doc("Inquiry Settings")
+	settings = frappe.get_cached_doc("Inquiry Settings")
 	return {
 		"confidence_threshold": settings.confidence_threshold or 75,
 		"default_ai_provider": settings.default_ai_provider,
 		"preferred_language": settings.preferred_language or "English",
 		"ai_api_url": settings.ai_api_url,
-		"ai_api_key": settings.get_password("ai_api_key") if settings.ai_api_key else None
+		# ai_api_key deliberately omitted — see docstring.
 	}
 
 
@@ -191,9 +193,18 @@ def create_opportunity_for_inquiry(
 		party_name: The name (ID) of the Customer or Lead document
 
 	Returns dict with the created Opportunity name and party details.
+
+	SECURITY (review finding S-6): the previous guard only rejected Guest, so any
+	authenticated user could create Opportunities. It then inserted with
+	``ignore_permissions=True, ignore_mandatory=True``, bypassing both ERPNext CRM
+	permissions and mandatory-field validation, and issued a mid-request
+	``frappe.db.commit()`` which breaks rollback if a later step fails.
+
+	The caller must now genuinely hold create permission on Opportunity, mandatory
+	fields are enforced, and the transaction is left to Frappe to commit.
 	"""
-	if not frappe.session.user or frappe.session.user == "Guest":
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if not frappe.has_permission("Opportunity", "create"):
+		frappe.throw(_("Not permitted to create Opportunity"), frappe.PermissionError)
 
 	if opportunity_from not in ("Customer", "Lead"):
 		frappe.throw(_("opportunity_from must be 'Customer' or 'Lead'"))
@@ -208,7 +219,6 @@ def create_opportunity_for_inquiry(
 				source_modified = True
 		if source_modified:
 			source_doc.save(ignore_permissions=True)
-			frappe.db.commit()
 	except Exception as e:
 		# Don't block if we can't load/save the source doc, just log it
 		frappe.log_error(message=str(e), title="create_opportunity_for_inquiry source doc cleanup failed")
@@ -227,8 +237,7 @@ def create_opportunity_for_inquiry(
 			"status": "Open",
 		}
 	)
-	opp.insert(ignore_permissions=True, ignore_mandatory=True)
-	frappe.db.commit()
+	opp.insert()
 
 	return {
 		"name": opp.name,
@@ -248,9 +257,13 @@ def create_lead_for_inquiry(
 	"""Create a new Lead for an unknown inquiry sender.
 
 	Returns dict with the created Lead name.
+
+	SECURITY (review finding S-6): see ``create_opportunity_for_inquiry``. The same
+	weak Guest-only guard, ``ignore_permissions``/``ignore_mandatory`` bypass and
+	mid-request commit applied here.
 	"""
-	if not frappe.session.user or frappe.session.user == "Guest":
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if not frappe.has_permission("Lead", "create"):
+		frappe.throw(_("Not permitted to create Lead"), frappe.PermissionError)
 
 	lead = frappe.get_doc(
 		{
@@ -277,8 +290,7 @@ def create_lead_for_inquiry(
 					if field and field.fieldtype == "Link":
 						child.set(key, None)
 
-	lead.insert(ignore_permissions=True, ignore_mandatory=True)
-	frappe.db.commit()
+	lead.insert()
 
 	return {
 		"name": lead.name,
@@ -293,8 +305,12 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 
 	Called by n8n workflow after a new inquiry ticket is created.
 	If no specific engineer is assigned, notifies all users with the Sales Engineer role.
+
+	SECURITY: this method has a side effect (it sends mail, potentially to every
+	Sales Engineer). A Guest-only check let any authenticated user trigger a
+	broadcast. The caller must now hold read permission on the specific ticket.
 	"""
-	if not frappe.session.user or frappe.session.user == "Guest":
+	if not frappe.has_permission("Inquiry Ticket", "read", inquiry):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 	doc = frappe.get_doc("Inquiry Ticket", inquiry)
@@ -346,7 +362,7 @@ def send_sales_engineer_notification(inquiry: str) -> dict:
 	return {"status": "sent", "recipients": recipients, "ticket": doc.name}
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def create_ai_processing_log(
 	inquiry_ticket: str = "",
 	task_type: str = "",
@@ -360,6 +376,11 @@ def create_ai_processing_log(
 	"""Create an AI Processing Log entry for tracking AI operations.
 
 	Called by n8n workflows after each AI call (classification, OCR, extraction).
+
+	SECURITY (review finding S-3): this method was previously ``allow_guest=True``,
+	making it an unauthenticated write endpoint that anyone could use to create
+	unbounded records. n8n must now authenticate with the ERPNext API token
+	credential, which is bound to every ERPNext node in the workflows.
 
 	Args:
 		inquiry_ticket: The Inquiry Ticket name (may be empty for pre-ticket calls)
@@ -387,7 +408,6 @@ def create_ai_processing_log(
 		}
 	)
 	log.insert(ignore_permissions=True)
-	frappe.db.commit()
 
 	return {"name": log.name, "status": log.status}
 
