@@ -122,6 +122,15 @@ def get_ai_settings() -> dict:
 		"preferred_language": settings.preferred_language or "English",
 		"ai_api_url": settings.ai_api_url,
 		# ai_api_key deliberately omitted — see docstring.
+		#
+		# Intake configuration. The automation layer's noise pre-filter reads these;
+		# without them the filter silently passes everything, and in particular the
+		# ERPNext notification loop guard (support@kayan-eg.net) would never fire.
+		"forwarding_mailbox": settings.forwarding_mailbox or "inquiries-inbox@kayan-eg.net",
+		"internal_domains": settings.internal_domains or "kayan-eg.net\nkayan-eg.com",
+		"supplier_domains": settings.supplier_domains or "",
+		"noise_sender_patterns": settings.noise_sender_patterns or "",
+		"backfill_mode": int(settings.backfill_mode or 0),
 	}
 
 

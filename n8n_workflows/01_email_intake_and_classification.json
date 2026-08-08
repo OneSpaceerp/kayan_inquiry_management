@@ -1,29 +1,708 @@
 {
   "name": "01_Email_Intake_and_Classification",
-  "meta": {
-    "aiBuilderAssisted": true,
-    "builderVariant": "mcp"
-  },
-  "settings": {
-    "executionTimeout": 300,
-    "availableInMCP": true,
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
-  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "format": "resolved",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 1}).toFormat('dd-LLL-yyyy')]]) }}"
+        }
+      },
+      "id": "imap-trigger",
+      "name": "IMAP Email Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        300
+      ],
+      "credentials": {
+        "imap": {
+          "id": "imap-cred-id",
+          "name": "Kayan Domain IMAP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.get_ai_settings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-inquiry-settings",
+      "name": "Get Inquiry Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        20,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Recover the address the customer actually wrote to.\n//\n// NEVER read Delivered-To. On this mail system it is written once, by the final\n// delivery hop, and always contains the central intake mailbox -- so it looks\n// like a valid Kayan address while being the same wrong answer every time.\n// That failure presents as a mapping problem, not a header problem.\nconst s = $('Get Inquiry Settings').first().json.message || {};\nconst FUNNEL = String(s.forwarding_mailbox || 'inquiries-inbox@kayan-eg.net').toLowerCase();\nconst INTERNAL = String(s.internal_domains || 'kayan-eg.net\\nkayan-eg.com')\n  .split('\\n').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);\n\nconst RE = /[\\w.+-]+@[\\w.-]+\\.\\w+/g;\nfunction addrs(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v.flatMap(addrs);\n  if (typeof v === 'object') {\n    if (v.value) return addrs(v.value);\n    if (v.address) return [v.address];\n    if (v.text) return addrs(v.text);\n    return [];\n  }\n  return String(v).match(RE) || [];\n}\nconst norm = a => String(a || '').trim().toLowerCase();\nconst isInternal = a => INTERNAL.includes((norm(a).split('@')[1] || ''));\n\nconst ORDER = ['Envelope-To', 'Received-For', 'Bcc', 'To Header', 'Cc Header', 'Manual Forward Sender'];\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n  const h = j.headers || {};\n  const get = k => h[k] ?? h[k.toLowerCase()] ?? h[k.replace(/-/g, '')] ?? null;\n\n  const envelopeTo  = addrs(get('envelope-to'));\n  const receivedRaw = Array.isArray(get('received')) ? get('received').join('\\n') : String(get('received') || '');\n  const receivedFor = (receivedRaw.match(/for\\s+<?[\\w.+-]+@[\\w.-]+\\.\\w+>?/gi) || [])\n    .map(m => (m.match(RE) || [])[0]).filter(Boolean);\n\n  const fromEmail = norm(addrs(j.from ?? get('from'))[0]);\n  const keep = list => [...new Set(list.map(norm))].filter(a => a && a !== FUNNEL && isInternal(a));\n\n  const cand = {\n    'Envelope-To':  keep(envelopeTo),\n    'Received-For': keep(receivedFor),\n    'Bcc':          keep(addrs(j.bcc ?? get('bcc'))),\n    'To Header':    keep(addrs(j.to  ?? get('to'))),\n    'Cc Header':    keep(addrs(j.cc  ?? get('cc'))),\n  };\n\n  // A staff member forwarding customer mail by hand: the envelope points at the\n  // funnel, so the forwarding employee is the owner.\n  const envelopeHitsFunnel = addrs(get('envelope-to')).map(norm).includes(FUNNEL);\n  if (isInternal(fromEmail) && fromEmail !== FUNNEL) cand['Manual Forward Sender'] = [fromEmail];\n\n  const all = [];\n  for (const k of ORDER) for (const a of (cand[k] || [])) if (!all.includes(a)) all.push(a);\n\n  let method = 'Unresolved', recipient = null;\n  for (const k of ORDER) if ((cand[k] || []).length) { method = k; recipient = cand[k][0]; break; }\n\n  const messageClass = !isInternal(fromEmail) ? 'external'\n    : (envelopeHitsFunnel || cand['Envelope-To'].length === 0) ? 'manual_forward' : 'internal';\n\n  out.push({ json: { ...j,\n    _recipient: recipient,\n    _recipients: all,\n    _resolution_method: method,\n    _from_email: fromEmail,\n    _message_class: messageClass,\n  }, binary: item.binary });\n}\nreturn out;\n"
+      },
+      "id": "resolve-original-recipient",
+      "name": "Resolve Original Recipient",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// ~88% of what lands in the funnel is not a new customer inquiry. Filtering\n// before the LLM call is what keeps cost and rate-limit exposure proportional\n// to inquiry volume rather than to total company mail.\nconst s = $('Get Inquiry Settings').first().json.message || {};\nconst lines = v => String(v || '').split('\\n').map(x => x.trim().toLowerCase()).filter(Boolean);\n\nconst FUNNEL    = String(s.forwarding_mailbox || 'inquiries-inbox@kayan-eg.net').toLowerCase();\nconst SUPPLIERS = lines(s.supplier_domains);\nconst NOISE     = lines(s.noise_sender_patterns);\n\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  const from = j._from_email || '';\n  const dom  = from.split('@')[1] || '';\n  const h = j.headers || {};\n  const g = k => String(h[k] ?? h[k.toLowerCase()] ?? '');\n\n  let reason = null;\n  if (!from)                                     reason = 'no sender address';\n  else if (from === FUNNEL)                      reason = 'loop guard: sent from the funnel itself';\n  // ERPNext mails its own notifications to staff, who forward them here. Without\n  // this the new intake would classify its own output and notify again.\n  else if (NOISE.some(p => from.includes(p)))    reason = 'noise sender pattern';\n  else if (/auto-(generated|replied)/i.test(g('auto-submitted'))) reason = 'auto-submitted';\n  else if (g('list-unsubscribe'))                reason = 'bulk or marketing';\n  else if (SUPPLIERS.includes(dom))              reason = 'supplier or principal domain';\n  else if (j._message_class === 'internal')      reason = 'internal correspondence';\n\n  out.push({ json: { ...j, _noise: !!reason, _drop_reason: reason }, binary: item.binary });\n}\nreturn out;\n"
+      },
+      "id": "pre-filter-noise",
+      "name": "Pre-Filter Noise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json._noise }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "is-noise?",
+      "name": "Is Noise?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "archive-noise",
+      "name": "Archive / No Action",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        900,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Manual forwards keep attachments intact but rewrite the envelope: From is the\n// Kayan employee, and the customer sits in an Outlook-style quoted block. Note\n// that block often carries only Cc, no To, because RFQs go out by BCC blast.\nconst out = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  let email = null, name = null, subject = null, sent = null;\n\n  if (j._message_class === 'manual_forward') {\n    const body = j.textPlain || j.text ||\n      String(j.textHtml || '').replace(/<[^>]+>/g, ' ');\n\n    const m = body.match(/From:\\s*\"?([^\"<\\n]*?)\"?\\s*<?([\\w.+-]+@[\\w.-]+\\.\\w+)>?/i);\n    if (m) { name = (m[1] || '').trim() || null; email = m[2].toLowerCase(); }\n\n    const sub = body.match(/^\\s*Subject:\\s*(.+)$/mi);\n    if (sub) subject = sub[1].trim();\n\n    const dt = body.match(/^\\s*Sent:\\s*(.+)$/mi);\n    if (dt) sent = dt[1].trim();\n  }\n\n  const external = j._message_class === 'external';\n  out.push({ json: { ...j,\n    _customer_email:   external ? j._from_email : email,\n    _customer_name:    external ? (j.from && j.from.value && j.from.value[0] && j.from.value[0].name) || null : name,\n    _original_subject: subject || j.subject || null,\n    _original_sent:    sent || j.date || null,\n  }, binary: item.binary });\n}\nreturn out;\n"
+      },
+      "id": "unwrap-forwarded-message",
+      "name": "Unwrap Forwarded Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:\"openai/gpt-4o-mini\",messages:[{role:\"system\",content:\"You classify B2B commercial email for an Egyptian HVAC and pumps distributor. Reply ONLY with JSON: {\\\"is_inquiry\\\":bool,\\\"classification\\\":\\\"RFQ|Quotation Request|Tender|Budget Request|Commercial Inquiry|RFP|Not an Inquiry\\\",\\\"confidence\\\":0-100,\\\"priority\\\":\\\"Low|Medium|High|Urgent\\\",\\\"summary\\\":\\\"one line\\\"}\"},{role:\"user\",content:(\"Subject: \"+($json._original_subject||\"\")+\"\\n\\n\"+String($json.textPlain||$json.text||\"\").slice(0,6000))}]}) }}"
+      },
+      "id": "classify-with-openrouter",
+      "name": "Classify with OpenRouter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1120,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "\nlet raw = '';\ntry { raw = $json.choices[0].message.content || ''; } catch (e) { raw = ''; }\nconst m = raw.match(/\\{[\\s\\S]*\\}/);\nlet p = {};\ntry { p = m ? JSON.parse(m[0]) : {}; } catch (e) { p = {}; }\nconst src = $('Unwrap Forwarded Message').first().json;\nreturn [{ json: { ...src,\n  is_inquiry: p.is_inquiry !== false,\n  classification: p.classification || null,\n  confidence: p.confidence ?? 0,\n  priority: p.priority || 'Medium',\n  summary: p.summary || null } }];\n"
+      },
+      "id": "parse-ai-output",
+      "name": "Parse AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.is_inquiry }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "is-inquiry?",
+      "name": "Is Inquiry?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        420
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "archive-noninq",
+      "name": "Archive Non-Inquiry",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// The previous workflow sent every non-image attachment into a hard-coded PDF\n// extractor. Spreadsheets are the most common attachment here (BoQs), so that\n// path failed on the majority of real mail.\nconst out = [];\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { out.push({ json: { ...item.json, _att_kind: 'none' } }); continue; }\n\n  for (const key of keys) {\n    const f = bin[key];\n    const name = String(f.fileName || '').toLowerCase();\n    const ext  = name.split('.').pop() || '';\n    let kind = 'unknown';\n    if (['png','jpg','jpeg','gif','bmp','tif','tiff','webp'].includes(ext)) kind = 'image';\n    else if (ext === 'pdf')                                    kind = 'pdf';\n    else if (['xlsx','xlsm','xls','csv'].includes(ext))        kind = 'spreadsheet';\n    else if (['docx','doc','rtf','txt'].includes(ext))         kind = 'document';\n    else if (['zip','rar','7z'].includes(ext))                 kind = 'archive';\n\n    out.push({\n      json: { ...item.json, _att_key: key, _att_name: f.fileName, _att_ext: ext, _att_kind: kind },\n      binary: { [key]: f },\n    });\n  }\n}\nreturn out;\n"
+      },
+      "id": "route-attachments",
+      "name": "Route Attachments",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json._att_kind }}",
+                    "rightValue": "image"
+                  }
+                ]
+              },
+              "outputKey": "image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json._att_kind }}",
+                    "rightValue": "pdf"
+                  }
+                ]
+              },
+              "outputKey": "pdf"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json._att_kind }}",
+                    "rightValue": "spreadsheet"
+                  }
+                ]
+              },
+              "outputKey": "spreadsheet"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json._att_kind }}",
+                    "rightValue": "document"
+                  }
+                ]
+              },
+              "outputKey": "document"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json._att_kind }}",
+                    "rightValue": "archive"
+                  }
+                ]
+              },
+              "outputKey": "archive"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-att",
+      "name": "Switch by Attachment Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:\"google/gemini-2.0-flash-001\",messages:[{role:\"user\",content:[{type:\"text\",text:\"Transcribe all text, tables and quantities from this document image. Preserve table structure.\"},{type:\"image_url\",image_url:{url:(\"data:\"+($binary[$json._att_key].mimeType||\"image/png\")+\";base64,\"+$binary[$json._att_key].data)}}]}]}) }}"
+      },
+      "id": "image-ocr",
+      "name": "Image OCR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2220,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "={{ $json._att_key }}",
+        "options": {}
+      },
+      "id": "extract-pdf",
+      "name": "Extract PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "={{ $json._att_key }}",
+        "options": {}
+      },
+      "id": "extract-xlsx",
+      "name": "Extract Spreadsheet",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "binaryPropertyName": "={{ $json._att_key }}",
+        "options": {}
+      },
+      "id": "extract-doc",
+      "name": "Extract Document Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// n8n cannot expand .rar natively, and RAR is not covered by PRD FR-7 (which\n// lists ZIP). Real mail contains them, so flag rather than fail: the file is\n// still attached to the ticket for a human to open.\nreturn $input.all().map(i => ({ json: { ...i.json,\n  _unsupported: true,\n  _unsupported_reason: `Archive .${i.json._att_ext} cannot be expanded automatically`,\n  _extracted_text: '' } }));\n"
+      },
+      "id": "flag-unsupported-archive",
+      "name": "Flag Unsupported Archive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2220,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Bills of Quantities run to hundreds of rows. Parsing them structurally rather\n// than feeding the whole sheet to the LLM keeps extraction affordable and\n// accurate; the model is reserved for unstructured bodies and scanned PDFs.\nconst HEADER_HINTS = {\n  description: ['description','item description','item','material','specification','desc','\u0628\u064a\u0627\u0646','\u0627\u0644\u0648\u0635\u0641'],\n  quantity:    ['qty','quantity','q-ty','amount','no.','count','\u0627\u0644\u0643\u0645\u064a\u0629'],\n  uom:         ['uom','unit','u/m','measure','\u0627\u0644\u0648\u062d\u062f\u0629'],\n  code:        ['code','item code','ref','reference','tag','item no','sn'],\n};\nconst norm = v => String(v ?? '').trim().toLowerCase();\nconst match = (cell, hints) => hints.some(h => norm(cell) === h || norm(cell).includes(h));\n\nconst rows = $input.all().map(i => i.json);\nif (!rows.length) return [{ json: { _boq_items: [], _boq_rows: 0 } }];\n\n// Find the header row: the first row where at least two hint groups match.\nlet headerIdx = -1, cols = {};\nfor (let i = 0; i < Math.min(rows.length, 25); i++) {\n  const vals = Object.values(rows[i]);\n  const found = {};\n  vals.forEach((v, idx) => {\n    for (const [field, hints] of Object.entries(HEADER_HINTS)) {\n      if (!(field in found) && match(v, hints)) found[field] = Object.keys(rows[i])[idx];\n    }\n  });\n  if (Object.keys(found).length >= 2) { headerIdx = i; cols = found; break; }\n}\n\nconst items = [];\nif (headerIdx >= 0) {\n  for (const r of rows.slice(headerIdx + 1)) {\n    const desc = cols.description ? String(r[cols.description] ?? '').trim() : '';\n    const qty  = cols.quantity    ? parseFloat(String(r[cols.quantity] ?? '').replace(/[^0-9.\\-]/g, '')) : null;\n    if (!desc || desc.length < 3) continue;\n    items.push({\n      description: desc,\n      quantity: Number.isFinite(qty) ? qty : null,\n      uom: cols.uom ? String(r[cols.uom] ?? '').trim() || null : null,\n      customer_item_code: cols.code ? String(r[cols.code] ?? '').trim() || null : null,\n      source: 'spreadsheet',\n    });\n  }\n}\nreturn [{ json: { _boq_items: items, _boq_rows: rows.length, _boq_header_row: headerIdx } }];\n"
+      },
+      "id": "parse-boq-spreadsheet",
+      "name": "Parse BoQ Spreadsheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst parts = [];\nfor (const item of $input.all()) {\n  const j = item.json;\n  if (j._extracted_text) parts.push(j._extracted_text);\n  else if (j.text) parts.push(j.text);\n  else if (j.data) parts.push(String(j.data));\n  else { try { parts.push(j.choices[0].message.content); } catch (e) {} }\n}\nreturn [{ json: { _attachment_text: parts.filter(Boolean).join('\\n\\n---\\n\\n').slice(0, 60000) } }];\n"
+      },
+      "id": "merge-extracted-text",
+      "name": "Merge Extracted Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({model:\"openai/gpt-4o-mini\",messages:[{role:\"system\",content:\"Extract structured data from a B2B inquiry. Reply ONLY with JSON: {\\\"contact\\\":{\\\"first_name\\\":\\\"\\\",\\\"last_name\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"email\\\":\\\"\\\",\\\"phones\\\":[]},\\\"delivery_location\\\":\\\"\\\",\\\"due_date\\\":\\\"YYYY-MM-DD or null\\\",\\\"tender_number\\\":\\\"\\\",\\\"items\\\":[{\\\"description\\\":\\\"\\\",\\\"quantity\\\":0,\\\"uom\\\":\\\"\\\"}]}\"},{role:\"user\",content:(\"Subject: \"+($('Parse AI Output').first().json._original_subject||\"\")+\"\\n\\nBody:\\n\"+String($('Parse AI Output').first().json.textPlain||\"\").slice(0,8000)+\"\\n\\nAttachments:\\n\"+String($json._attachment_text||\"\").slice(0,20000))}]}) }}"
+      },
+      "id": "extract-metadata",
+      "name": "Extract Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2880,
+        540
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openrouter-api-key-id",
+          "name": "OpenRouter API Token"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "\nlet raw = '';\ntry { raw = $json.choices[0].message.content || ''; } catch (e) { raw = ''; }\nconst m = raw.match(/\\{[\\s\\S]*\\}/);\nlet p = {};\ntry { p = m ? JSON.parse(m[0]) : {}; } catch (e) { p = {}; }\nreturn [{ json: p }];\n"
+      },
+      "id": "parse-extraction-output",
+      "name": "Parse Extraction Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_ai_processing_log",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({task_type:\"Data Extraction\",provider:\"OpenRouter\",model:\"openai/gpt-4o-mini\",status:\"Completed\"}) }}"
+      },
+      "id": "log-ai-call",
+      "name": "Log AI Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        3320,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Assemble the single payload for ingest_inquiry_email. Everything the previous\n// eight-call chain discovered incrementally is decided server-side now.\nconst src = $('Unwrap Forwarded Message').first().json;\nconst cls = $('Parse AI Output').first().json || {};\nlet ext = {};\ntry { ext = $('Parse Extraction Output').first().json || {}; } catch (e) { ext = {}; }\nlet boq = [];\ntry { boq = ($('Parse BoQ Spreadsheet').all() || []).flatMap(i => i.json._boq_items || []); } catch (e) { boq = []; }\n\nconst h = src.headers || {};\nconst g = k => h[k] ?? h[k.toLowerCase()] ?? null;\nconst list = v => !v ? [] : (Array.isArray(v) ? v : String(v).match(/[\\w.+-]+@[\\w.-]+\\.\\w+/g) || []);\n\nconst items = [...(ext.items || []), ...boq];\n\nreturn [{ json: {\n  message_id:    src.messageId || g('message-id') || '',\n  thread_id:     src.threadId || g('references') || '',\n  subject:       src._original_subject || src.subject || '',\n  // Delivery-date is arrival; the Date header is when the customer sent it. A\n  // two-week-old forward would otherwise start life already SLA-breached.\n  received_date: g('delivery-date') || src.date || null,\n  sent_date:     src._original_sent || src.date || null,\n  classification: cls.classification || cls.inquiry_type || null,\n  confidence:     cls.confidence ?? 0,\n  ai_provider:    'OpenRouter',\n  summary:        cls.summary || null,\n  priority:       cls.priority || 'Medium',\n  headers: {\n    envelope_to:  list(g('envelope-to')),\n    received_for: src._recipients || [],\n    bcc:          list(src.bcc || g('bcc')),\n    to:           list(src.to  || g('to')),\n    cc:           list(src.cc  || g('cc')),\n    from_email:   src._from_email || '',\n  },\n  contact: {\n    first_name:   (ext.contact && ext.contact.first_name) || null,\n    last_name:    (ext.contact && ext.contact.last_name) || null,\n    name:         src._customer_name || null,\n    company_name: (ext.contact && ext.contact.company_name) || null,\n    email:        src._customer_email || (ext.contact && ext.contact.email) || null,\n    phones:       (ext.contact && ext.contact.phones) || [],\n  },\n  inquiry: {\n    delivery_location: ext.delivery_location || null,\n    due_date:          ext.due_date || null,\n    tender_number:     ext.tender_number || null,\n  },\n  items,\n  extracted: ext,\n} }];\n"
+      },
+      "id": "build-ingest-payload",
+      "name": "Build Ingest Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3320,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.intake.ingest_inquiry_email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({payload: JSON.stringify($json)}) }}"
+      },
+      "id": "ingest-inquiry-email",
+      "name": "Ingest Inquiry Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        3540,
+        640
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "erpnext-api-token-id",
+          "name": "ERPNext API Token Credentials"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Cs28kkYtrJVo1wMM",
+          "mode": "id",
+          "cachedResultName": "03_Attach_Files_and_Notify"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket": "={{ $json.ticket }}",
+            "created": "={{ $json.created }}",
+            "assigned_to": "={{ $json.assigned_to }}"
+          }
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "trigger-attach",
+      "name": "Trigger Attach & Notify",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3760,
+        640
+      ]
+    }
+  ],
   "connections": {
-    "Parse AI Output": {
+    "IMAP Email Trigger": {
       "main": [
         [
           {
-            "node": "Is Non-Inquiry?",
+            "node": "Get Inquiry Settings",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Is Non-Inquiry?": {
+    "Get Inquiry Settings": {
+      "main": [
+        [
+          {
+            "node": "Resolve Original Recipient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Original Recipient": {
+      "main": [
+        [
+          {
+            "node": "Pre-Filter Noise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-Filter Noise": {
+      "main": [
+        [
+          {
+            "node": "Is Noise?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Noise?": {
       "main": [
         [
           {
@@ -34,25 +713,18 @@
         ],
         [
           {
-            "node": "Is Low Confidence?",
+            "node": "Unwrap Forwarded Message",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Is Low Confidence?": {
+    "Unwrap Forwarded Message": {
       "main": [
         [
           {
-            "node": "Create Review Inquiry in ERPNext",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Has Attachments?",
+            "node": "Classify with OpenRouter",
             "type": "main",
             "index": 0
           }
@@ -70,138 +742,93 @@
         ]
       ]
     },
-    "IMAP Email Trigger": {
+    "Parse AI Output": {
       "main": [
         [
           {
-            "node": "Get Inquiry Settings",
+            "node": "Is Inquiry?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Inquiry Settings": {
+    "Is Inquiry?": {
       "main": [
         [
           {
-            "node": "Check AI Settings",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check AI Settings": {
-      "main": [
-        [
-          {
-            "node": "Classify with Custom AI",
+            "node": "Route Attachments",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Classify with OpenRouter",
+            "node": "Archive Non-Inquiry",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Classify with Custom AI": {
+    "Route Attachments": {
       "main": [
         [
           {
-            "node": "Parse AI Output",
+            "node": "Switch by Attachment Type",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Create Review Inquiry in ERPNext": {
+    "Switch by Attachment Type": {
       "main": [
         [
           {
-            "node": "Log Classification AI Call",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Has Attachments?": {
-      "main": [
-        [
-          {
-            "node": "Split Attachments Loop",
+            "node": "Image OCR",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Prepare Payload No Attachments",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split Attachments Loop": {
-      "main": [
-        [
-          {
-            "node": "Is Image File?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is Image File?": {
-      "main": [
-        [
-          {
-            "node": "Convert Image to Base64",
+            "node": "Extract PDF Text",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Extract Text from Doc Node",
+            "node": "Extract Spreadsheet",
             "type": "main",
             "index": 0
           }
-        ]
-      ]
-    },
-    "Convert Image to Base64": {
-      "main": [
+        ],
         [
           {
-            "node": "Custom Image OCR API",
+            "node": "Extract Document Text",
             "type": "main",
             "index": 0
           }
-        ]
-      ]
-    },
-    "Custom Image OCR API": {
-      "main": [
+        ],
         [
           {
-            "node": "Parse Image OCR Output",
+            "node": "Flag Unsupported Archive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Extracted Text",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Parse Image OCR Output": {
+    "Image OCR": {
       "main": [
         [
           {
@@ -212,11 +839,55 @@
         ]
       ]
     },
-    "Extract Text from Doc Node": {
+    "Extract PDF Text": {
       "main": [
         [
           {
-            "node": "Format Document Text Output",
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Spreadsheet": {
+      "main": [
+        [
+          {
+            "node": "Parse BoQ Spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse BoQ Spreadsheet": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Document Text": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Unsupported Archive": {
+      "main": [
+        [
+          {
+            "node": "Merge Extracted Text",
             "type": "main",
             "index": 0
           }
@@ -227,36 +898,14 @@
       "main": [
         [
           {
-            "node": "Prepare LLM Payload",
+            "node": "Extract Metadata",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prepare LLM Payload": {
-      "main": [
-        [
-          {
-            "node": "Custom Extract Metadata API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prepare Payload No Attachments": {
-      "main": [
-        [
-          {
-            "node": "Custom Extract Metadata API",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Custom Extract Metadata API": {
+    "Extract Metadata": {
       "main": [
         [
           {
@@ -271,686 +920,49 @@
       "main": [
         [
           {
-            "node": "Log Extraction AI Call",
+            "node": "Log AI Call",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Trigger Customer Matching & Creation",
+            "node": "Build Ingest Payload",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Format Document Text Output": {
+    "Build Ingest Payload": {
       "main": [
         [
           {
-            "node": "Merge Extracted Text",
+            "node": "Ingest Inquiry Email",
             "type": "main",
-            "index": 1
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Inquiry Email": {
+      "main": [
+        [
+          {
+            "node": "Trigger Attach & Notify",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
     }
   },
-  "nodes": [
-    {
-      "parameters": {
-        "format": "resolved",
-        "options": {
-          "allowUnauthorizedCerts": true,
-          "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 1}).toFormat('dd-LLL-yyyy')]]) }}"
-        }
-      },
-      "id": "e9df18c3-4ab7-47b2-bd5f-e05417ab9001",
-      "name": "IMAP Email Trigger",
-      "type": "n8n-nodes-base.emailReadImap",
-      "typeVersion": 1,
-      "position": [
-        64,
-        288
-      ],
-      "credentials": {
-        "imap": {
-          "id": "imap-cred-id",
-          "name": "Kayan Domain IMAP Account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://openrouter.ai/api/v1/chat/completions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": {
-          "messages": [
-            {
-              "content": "You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\nReturn ONLY a JSON object containing the following keys:\n- classification (string)\n- confidence (number between 0 and 100)\n- reason (string)",
-              "role": "system"
-            },
-            {
-              "content": "={{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\nBody:\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}",
-              "role": "user"
-            }
-          ],
-          "model": "openrouter/free",
-          "response_format": {
-            "type": "json_object"
-          }
-        },
-        "options": {}
-      },
-      "id": "96c342f0-bf48-4395-88de-e91b29a24002",
-      "name": "Classify with OpenRouter",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        720,
-        400
-      ],
-      "retryOnFail": true,
-      "maxTries": 5,
-      "waitBetweenTries": 5000,
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "openrouter-api-key-id",
-          "name": "OpenRouter API Token"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\nconst trigger = $('IMAP Email Trigger').first().json;\nconst settings = $('Get Inquiry Settings').first().json.message || {};\n\n// Determine which AI provider/model was used\nlet aiProvider = settings.default_ai_provider || 'OpenRouter';\nlet aiModel = '';\ntry {\n  aiModel = $json.model || '';\n} catch(e) {}\n\nreturn [{\n  json: {\n    email_id: trigger.messageId,\n    to: trigger.to?.value?.[0]?.address || '',\n    from: trigger.from?.value?.[0]?.address || '',\n    subject: trigger.subject,\n    body: trigger.text || '',\n    html_body: trigger.html || '',\n    threadId: trigger.threadId || '',\n    date: trigger.date || '',\n    classification: parsed.classification,\n    confidence: parsed.confidence,\n    reason: parsed.reason,\n    ai_provider: aiProvider,\n    ai_model: aiModel\n  }\n}];"
-      },
-      "id": "86bc320f-bcf0-42ba-b3f0-466bc0092c42",
-      "name": "Parse AI Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        944,
-        288
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "cond-1",
-              "leftValue": "={{$json.classification}}",
-              "rightValue": "Non Inquiry",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "82f8c5b2-32a2-4a0b-93ff-15cf992b15e2",
-      "name": "Is Non-Inquiry?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1168,
-        288
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "conditions": [
-            {
-              "id": "cond-2",
-              "leftValue": "={{$json.confidence}}",
-              "operator": {
-                "operation": "lessThan",
-                "type": "number"
-              },
-              "rightValue": "={{ $('Get Inquiry Settings').item.json.message.confidence_threshold }}"
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb2",
-      "name": "Is Low Confidence?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1392,
-        400
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/resource/Inquiry Ticket",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries({ inquiry_type: $json.classification, status: 'Pending Review', ai_needs_review: 1, ai_classification: $json.classification, ai_confidence: $json.confidence, ai_provider: $json.ai_provider, source_mailbox: $json.to, original_email_subject: $json.subject, contact_email: $json.from, received_date: $json.date ? new Date($json.date).toISOString().replace('T', ' ').substring(0, 19) : undefined }).filter(([k, v]) => v !== null && v !== undefined && v !== ''))) }}",
-        "options": {}
-      },
-      "id": "31b26ae3-02f8-4100-abef-ffde122a2bb3",
-      "name": "Create Review Inquiry in ERPNext",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        1600,
-        320
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "erpnext-api-token-id",
-          "name": "ERPNext API Token Credentials"
-        }
-      }
-    },
-    {
-      "parameters": {},
-      "id": "1ab4de3a-cfef-4cde-80df-26cf0182cbef",
-      "name": "Archive / No Action",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1392,
-        192
-      ]
-    },
-    {
-      "parameters": {
-        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.get_ai_settings",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "60c1c378-2c80-49b6-89fe-860f8cb0d1de",
-      "name": "Get Inquiry Settings",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        288,
-        288
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "erpnext-api-token-id",
-          "name": "ERPNext API Token Credentials"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "conditions": [
-            {
-              "id": "cond-has-key",
-              "leftValue": "={{ $json.message.ai_api_key }}",
-              "operator": {
-                "operation": "notEmpty",
-                "type": "string"
-              },
-              "rightValue": ""
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "1605a924-062d-4266-af7b-578fa90f915b",
-      "name": "Check AI Settings",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        512,
-        288
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Get Inquiry Settings').item.json.message.ai_api_url.replace(/\\/$/, '') }}/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Inquiry Settings').item.json.message.ai_api_key }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": {
-          "messages": [
-            {
-              "content": "You are an AI assistant that classifies business emails. Categorize the email into one of the following classes: 'RFQ', 'Tender', 'Quotation Request', 'Budget Request', 'Commercial Inquiry', 'RFP', or 'Non Inquiry' if it's spam, marketing, personal, or administrative.\nReturn ONLY a JSON object containing the following keys:\n- classification (string)\n- confidence (number between 0 and 100)\n- reason (string)",
-              "role": "system"
-            },
-            {
-              "content": "={{ JSON.stringify('Subject: ' + $('IMAP Email Trigger').item.json.subject + '\\\\nFrom: ' + ($('IMAP Email Trigger').item.json.from?.value?.[0]?.address || '') + '\\\\nBody:\\\\n' + ($('IMAP Email Trigger').item.json.text || '')) }}",
-              "role": "user"
-            }
-          ],
-          "model": "={{ $('Get Inquiry Settings').item.json.message.default_ai_provider === 'Gemini' ? 'google/gemini-2.5-flash' : 'openai/gpt-4o-mini' }}",
-          "response_format": {
-            "type": "json_object"
-          }
-        },
-        "options": {}
-      },
-      "id": "169e8fa6-d80a-4886-8f6b-b33d737e30fb",
-      "name": "Classify with Custom AI",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        720,
-        192
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_ai_processing_log",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": {
-          "model": "={{ $('Parse AI Output').first().json.ai_model }}",
-          "provider": "={{ $('Parse AI Output').first().json.ai_provider }}",
-          "status": "Completed",
-          "task_type": "Email Classification"
-        },
-        "options": {}
-      },
-      "id": "log-classification-ai-id",
-      "name": "Log Classification AI Call",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        1824,
-        320
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "erpnext-api-token-id",
-          "name": "ERPNext API Token Credentials"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "conditions": [
-            {
-              "id": "cond-has-attachments",
-              "leftValue": "={{ $('IMAP Email Trigger').first().binary ? Object.keys($('IMAP Email Trigger').first().binary).length : 0 }}",
-              "operator": {
-                "operation": "greaterThan",
-                "type": "number"
-              },
-              "rightValue": 0
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "93b2df0f-c3f2-4934-8be0-b98a1293a9d2",
-      "name": "Has Attachments?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1600,
-        544
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const triggerData = $('IMAP Email Trigger').first();\nconst results = [];\n\nif (triggerData.binary) {\n  for (const key of Object.keys(triggerData.binary)) {\n    const file = triggerData.binary[key];\n    results.push({\n      json: {\n        filename: file.fileName || file.name || 'attachment',\n        mimeType: file.mimeType || '',\n        binaryKey: key\n      },\n      binary: {\n        attachment: file\n      }\n    });\n  }\n}\n\nreturn results;"
-      },
-      "id": "cbf82db0-c9a9-40b9-87a3-e29fba9e2ab1",
-      "name": "Split Attachments Loop",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1824,
-        464
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "conditions": [
-            {
-              "id": "cond-is-image",
-              "leftValue": "={{$json.mimeType || $json.contentType || ''}}",
-              "operator": {
-                "operation": "contains",
-                "type": "string"
-              },
-              "rightValue": "image"
-            }
-          ],
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          },
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "da8f121d-a3df-40be-b4db-ef7eab3c4b93",
-      "name": "Is Image File?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        2048,
-        464
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const items = $input.all();\nfor (const item of items) {\n  if (item.binary && item.binary.attachment) {\n    item.json.base64 = item.binary.attachment.data;\n    item.json.mimeType = item.binary.attachment.mimeType;\n  }\n}\nreturn items;"
-      },
-      "id": "fe5cbe0c-cbef-49ac-92fe-a8bf327ab3f0",
-      "name": "Convert Image to Base64",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2272,
-        384
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Get Inquiry Settings').item.json.message.ai_api_url.replace(/\\/$/, '') }}/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Inquiry Settings').item.json.message.ai_api_key }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { model: 'google/gemini-2.5-flash', messages: [ { role: 'user', content: [ { type: 'text', text: 'Extract all tabular data, line items, lists, and text from this image precisely. Do not summarize or explain.' }, { type: 'image_url', image_url: { url: 'data:' + $json.mimeType + ';base64,' + $json.base64 } } ] } ] } }}",
-        "options": {}
-      },
-      "id": "custom-ocr-id",
-      "name": "Custom Image OCR API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        2544,
-        384
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{\n  json: {\n    text: $json.choices[0].message.content,\n    filename: $('Split Attachments Loop').first().json.filename || 'image.png'\n  }\n}];"
-      },
-      "id": "f5acbe23-a1bf-4bdf-84ff-bcfde90a2cfc",
-      "name": "Parse Image OCR Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2768,
-        384
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "pdf",
-        "binaryPropertyName": "attachment",
-        "options": {}
-      },
-      "id": "a9dbf120-cf9c-4932-b2a8-fbe0ab7201bd",
-      "name": "Extract Text from Doc Node",
-      "type": "n8n-nodes-base.extractFromFile",
-      "typeVersion": 1,
-      "position": [
-        2272,
-        560
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "return [{\n  json: {\n    text: $json.text || '',\n    filename: $('Split Attachments Loop').first().json.filename || 'document.pdf'\n  }\n}];"
-      },
-      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef87",
-      "name": "Format Document Text Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2480,
-        560
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const ocrItems = [];\ntry {\n  ocrItems.push(...$('Parse Image OCR Output').all());\n} catch(e) {}\n\nconst docItems = [];\ntry {\n  docItems.push(...$('Format Document Text Output').all());\n} catch(e) {}\n\nreturn [...ocrItems, ...docItems];"
-      },
-      "id": "ef8cbe2c-bfb0-4da2-bd32-ae0193ca8bee",
-      "name": "Merge Extracted Text",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2992,
-        464
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const classifyOutput = $('Parse AI Output').first().json;\nlet textBlocks = [];\n\n// Collect all extracted text blocks from merged output\nconst merged = $input.all();\nfor (const block of merged) {\n  if (block.json && block.json.text) {\n    textBlocks.push('=== File: ' + (block.json.filename || 'unknown') + ' ===\\n' + block.json.text);\n  }\n}\n\nreturn [{\n  json: {\n    email_id: classifyOutput.email_id,\n    source_mailbox: classifyOutput.to,\n    from: classifyOutput.from,\n    subject: classifyOutput.subject,\n    body: classifyOutput.body || '',\n    date: classifyOutput.date || '',\n    threadId: classifyOutput.threadId || '',\n    classification: classifyOutput.classification,\n    confidence: classifyOutput.confidence,\n    ai_provider: classifyOutput.ai_provider,\n    ai_model: classifyOutput.ai_model,\n    full_extracted_text: textBlocks.join('\\n\\n')\n  }\n}];"
-      },
-      "id": "6bf42ea3-88bc-4bc9-a83d-dcf428cbef82",
-      "name": "Prepare LLM Payload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3200,
-        464
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// No attachments path - pass through email data directly\nconst classifyOutput = $('Parse AI Output').first().json;\n\nreturn [{\n  json: {\n    email_id: classifyOutput.email_id,\n    source_mailbox: classifyOutput.to,\n    from: classifyOutput.from,\n    subject: classifyOutput.subject,\n    body: classifyOutput.body || '',\n    date: classifyOutput.date || '',\n    threadId: classifyOutput.threadId || '',\n    classification: classifyOutput.classification,\n    confidence: classifyOutput.confidence,\n    ai_provider: classifyOutput.ai_provider,\n    ai_model: classifyOutput.ai_model,\n    full_extracted_text: ''\n  }\n}];"
-      },
-      "id": "no-attachments-payload-id",
-      "name": "Prepare Payload No Attachments",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2016,
-        800
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $('Get Inquiry Settings').item.json.message.ai_api_url.replace(/\\/$/, '') }}/chat/completions",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $('Get Inquiry Settings').item.json.message.ai_api_key }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": {
-          "messages": [
-            {
-              "content": "You are an AI assistant that extracts customer details and RFQ items from email and attachment text. Extract the details precisely.\nReturn ONLY a JSON object containing the following keys:\n- customer_name (string)\n- company_name (string)\n- phone (string)\n- delivery_location (string)\n- due_date (string, format YYYY-MM-DD)\n- tender_number (string)\n- items (array of objects, each containing: description (string, required), quantity (number), uom (string))",
-              "role": "system"
-            },
-            {
-              "content": "={{ JSON.stringify('Email Subject: ' + ($json.subject || '') + '\\nFrom: ' + ($json.from || '') + '\\nBody: ' + ($json.body || '') + '\\n\\n--- Extracted Document Text ---\\n' + ($json.full_extracted_text || '')) }}",
-              "role": "user"
-            }
-          ],
-          "model": "={{ $('Get Inquiry Settings').item.json.message.default_ai_provider === 'Gemini' ? 'google/gemini-2.5-flash' : 'openai/gpt-4o-mini' }}",
-          "response_format": {
-            "type": "json_object"
-          }
-        },
-        "options": {}
-      },
-      "id": "custom-extract-id",
-      "name": "Custom Extract Metadata API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        3424,
-        544
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "let responseText = $json.choices[0].message.content.trim();\nif (responseText.startsWith('```')) {\n  responseText = responseText.replace(/^```json\\s*/i, '').replace(/```$/, '').trim();\n}\nconst parsed = JSON.parse(responseText);\n\n// Get data from the appropriate upstream node\nlet payload;\ntry {\n  payload = $('Prepare LLM Payload').first().json;\n} catch(e) {\n  payload = $('Prepare Payload No Attachments').first().json;\n}\n\nreturn [{\n  json: {\n    email_id: payload.email_id,\n    source_mailbox: payload.source_mailbox,\n    from: payload.from,\n    subject: payload.subject,\n    body: payload.body,\n    date: payload.date || '',\n    threadId: payload.threadId || '',\n    classification: payload.classification,\n    confidence: payload.confidence,\n    ai_provider: payload.ai_provider,\n    ai_model: payload.ai_model,\n    customer_name: parsed.customer_name || '',\n    company_name: parsed.company_name || '',\n    phone: parsed.phone || '',\n    delivery_location: parsed.delivery_location || '',\n    due_date: parsed.due_date || '',\n    tender_number: parsed.tender_number || '',\n    items: parsed.items || []\n  },\n  binary: $('IMAP Email Trigger').first().binary\n}];"
-      },
-      "id": "83cf0cb2-fb4d-4d3e-8b2e-abcd874bcbef",
-      "name": "Parse Extraction Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3648,
-        544
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://onespace.kayan-eg.net/api/method/kayan_inquiry_management.api.create_ai_processing_log",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": {
-          "model": "={{ $json.ai_model }}",
-          "provider": "={{ $json.ai_provider }}",
-          "status": "Completed",
-          "task_type": "Data Extraction"
-        },
-        "options": {}
-      },
-      "id": "log-extraction-ai-id",
-      "name": "Log Extraction AI Call",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [
-        3872,
-        544
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "erpnext-api-token-id",
-          "name": "ERPNext API Token Credentials"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "workflowId": "cIiMD78rK1s3PlLj",
-        "mode": "each",
-        "options": {}
-      },
-      "id": "42ca31bf-fb82-411a-82fe-3dcb291f0923",
-      "name": "Trigger Customer Matching & Creation",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [
-        4080,
-        544
-      ]
-    }
-  ],
-  "tags": []
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 900,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "active": false
 }

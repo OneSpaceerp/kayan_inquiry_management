@@ -1,6 +1,21 @@
 {
-  "name": "05_SLA_Breach_Escalation",
+  "name": "05_SLA_Breach_Escalation_RETIRED",
   "nodes": [
+    {
+      "parameters": {
+        "content": "## RETIRED\\n\\nSLA breach detection and escalation are owned by the ERPNext scheduler:\\n`sla_management.sla_monitor.check_sla_breaches` (hourly), which now calls\\n`intake.send_escalation`.\\n\\nTwo implementations existed and had already drifted: this workflow treated\\n'Assigned to Sales Engineer' as a Technical Review breach, the scheduler\\ntreated it as an Assignment breach. Do not reactivate.",
+        "height": 260,
+        "width": 460
+      },
+      "id": "retired-note",
+      "name": "RETIRED",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        120
+      ]
+    },
     {
       "parameters": {
         "triggerTimes": {
