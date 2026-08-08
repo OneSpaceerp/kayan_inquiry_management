@@ -48,21 +48,25 @@ def check_sla_breaches():
 
 	for inquiry in inquiries:
 		breached = False
+		breach_type = ""
 
 		# Check assignment SLA
 		if inquiry.sla_assignment_deadline and now > inquiry.sla_assignment_deadline:
 			if inquiry.status in ["New", "Pending Review", "Assigned to Sales Engineer"]:
 				breached = True
+				breach_type = "Assignment SLA"
 
 		# Check technical SLA
 		if inquiry.sla_technical_deadline and now > inquiry.sla_technical_deadline:
 			if inquiry.status in ["Assigned to Application Engineer", "Technical Review In Progress"]:
 				breached = True
+				breach_type = "Technical Review SLA"
 
 		# Check quotation SLA
 		if inquiry.sla_quotation_deadline and now > inquiry.sla_quotation_deadline:
 			if inquiry.status == "Quotation Preparation In Progress":
 				breached = True
+				breach_type = "Quotation Preparation SLA"
 
 		if breached:
 			frappe.db.set_value("Inquiry Ticket", inquiry.name, "sla_status", "Breached", update_modified=False)
@@ -74,5 +78,18 @@ def check_sla_breaches():
 				entity_type="Inquiry Ticket",
 				entity_id=inquiry.name,
 				action="SLA Breached",
-				details=f"SLA breached for inquiry {inquiry.name} in status {inquiry.status}",
+				details=f"SLA breached for inquiry {inquiry.name} in status {inquiry.status} ({breach_type})",
 			)
+
+			# Actually escalate. This step was documented in the docstring below but
+			# never implemented, so breaches were flagged and nobody was told — which
+			# is why every existing ticket sat at "Breached" unremarked.
+			try:
+				from kayan_inquiry_management.intake import send_escalation
+
+				send_escalation(inquiry.name, breach_type=breach_type, level=1)
+			except Exception:
+				frappe.log_error(
+					message=frappe.get_traceback(),
+					title=f"SLA escalation failed for {inquiry.name}",
+				)
