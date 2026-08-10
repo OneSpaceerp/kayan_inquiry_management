@@ -57,11 +57,12 @@
       },
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 2000
+      "waitBetweenTries": 2000,
+      "executeOnce": true
     },
     {
       "parameters": {
-        "jsCode": "\n// Recover the address the customer actually wrote to.\n//\n// NEVER read Delivered-To. On this mail system it is written once, by the final\n// delivery hop, and always contains the central intake mailbox -- so it looks\n// like a valid Kayan address while being the same wrong answer every time.\n// That failure presents as a mapping problem, not a header problem.\nconst s = $('Get Inquiry Settings').first().json.message || {};\nconst FUNNEL = String(s.forwarding_mailbox || 'inquiries-inbox@kayan-eg.net').toLowerCase();\nconst INTERNAL = String(s.internal_domains || 'kayan-eg.net\\nkayan-eg.com')\n  .split('\\n').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);\n\nconst RE = /[\\w.+-]+@[\\w.-]+\\.\\w+/g;\nfunction addrs(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v.flatMap(addrs);\n  if (typeof v === 'object') {\n    if (v.value) return addrs(v.value);\n    if (v.address) return [v.address];\n    if (v.text) return addrs(v.text);\n    return [];\n  }\n  return String(v).match(RE) || [];\n}\nconst norm = a => String(a || '').trim().toLowerCase();\nconst isInternal = a => INTERNAL.includes((norm(a).split('@')[1] || ''));\n\nconst ORDER = ['Envelope-To', 'Received-For', 'Bcc', 'To Header', 'Cc Header', 'Manual Forward Sender'];\nconst out = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n  const h = j.headers || {};\n  const get = k => h[k] ?? h[k.toLowerCase()] ?? h[k.replace(/-/g, '')] ?? null;\n\n  const envelopeTo  = addrs(get('envelope-to'));\n  const receivedRaw = Array.isArray(get('received')) ? get('received').join('\\n') : String(get('received') || '');\n  const receivedFor = (receivedRaw.match(/for\\s+<?[\\w.+-]+@[\\w.-]+\\.\\w+>?/gi) || [])\n    .map(m => (m.match(RE) || [])[0]).filter(Boolean);\n\n  const fromEmail = norm(addrs(j.from ?? get('from'))[0]);\n  const keep = list => [...new Set(list.map(norm))].filter(a => a && a !== FUNNEL && isInternal(a));\n\n  const cand = {\n    'Envelope-To':  keep(envelopeTo),\n    'Received-For': keep(receivedFor),\n    'Bcc':          keep(addrs(j.bcc ?? get('bcc'))),\n    'To Header':    keep(addrs(j.to  ?? get('to'))),\n    'Cc Header':    keep(addrs(j.cc  ?? get('cc'))),\n  };\n\n  // A staff member forwarding customer mail by hand: the envelope points at the\n  // funnel, so the forwarding employee is the owner.\n  const envelopeHitsFunnel = addrs(get('envelope-to')).map(norm).includes(FUNNEL);\n  if (isInternal(fromEmail) && fromEmail !== FUNNEL) cand['Manual Forward Sender'] = [fromEmail];\n\n  const all = [];\n  for (const k of ORDER) for (const a of (cand[k] || [])) if (!all.includes(a)) all.push(a);\n\n  let method = 'Unresolved', recipient = null;\n  for (const k of ORDER) if ((cand[k] || []).length) { method = k; recipient = cand[k][0]; break; }\n\n  const messageClass = !isInternal(fromEmail) ? 'external'\n    : (envelopeHitsFunnel || cand['Envelope-To'].length === 0) ? 'manual_forward' : 'internal';\n\n  out.push({ json: { ...j,\n    _recipient: recipient,\n    _recipients: all,\n    _resolution_method: method,\n    _from_email: fromEmail,\n    _message_class: messageClass,\n  }, binary: item.binary });\n}\nreturn out;\n"
+        "jsCode": "\n// Recover the address the customer actually wrote to.\n//\n// NEVER read Delivered-To. On this mail system it is written once, by the final\n// delivery hop, and always contains the central intake mailbox -- so it looks\n// like a valid Kayan address while being the same wrong answer every time.\n// That failure presents as a mapping problem, not a header problem.\n// Settings arrive on a node in the item stream, and an HTTP Request node\n// REPLACES each item with its response body -- so $input here is N copies of\n// the settings payload, not the mail. Read the mail from the trigger and the\n// settings by name; that is why Get Inquiry Settings runs once.\nconst s = $('Get Inquiry Settings').first().json.message || {};\nconst FUNNEL = String(s.forwarding_mailbox || 'inquiries-inbox@kayan-eg.net').toLowerCase();\nconst INTERNAL = String(s.internal_domains || 'kayan-eg.net\\nkayan-eg.com')\n  .split('\\n').map(x => x.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);\n\nconst RE = /[\\w.+-]+@[\\w.-]+\\.\\w+/g;\nfunction addrs(v) {\n  if (!v) return [];\n  if (Array.isArray(v)) return v.flatMap(addrs);\n  if (typeof v === 'object') {\n    if (v.value) return addrs(v.value);\n    if (v.address) return [v.address];\n    if (v.text) return addrs(v.text);\n    return [];\n  }\n  return String(v).match(RE) || [];\n}\nconst norm = a => String(a || '').trim().toLowerCase();\nconst isInternal = a => INTERNAL.includes((norm(a).split('@')[1] || ''));\n\nconst ORDER = ['Envelope-To', 'Received-For', 'Bcc', 'To Header', 'Cc Header', 'Manual Forward Sender'];\nconst out = [];\n\nfor (const item of $('IMAP Email Trigger').all()) {\n  const j = item.json;\n  const h = j.headers || {};\n  const get = k => h[k] ?? h[k.toLowerCase()] ?? h[k.replace(/-/g, '')] ?? null;\n\n  const envelopeTo  = addrs(get('envelope-to'));\n  const receivedRaw = Array.isArray(get('received')) ? get('received').join('\\n') : String(get('received') || '');\n  const receivedFor = (receivedRaw.match(/for\\s+<?[\\w.+-]+@[\\w.-]+\\.\\w+>?/gi) || [])\n    .map(m => (m.match(RE) || [])[0]).filter(Boolean);\n\n  const fromEmail = norm(addrs(j.from ?? get('from'))[0]);\n  const keep = list => [...new Set(list.map(norm))].filter(a => a && a !== FUNNEL && isInternal(a));\n\n  const cand = {\n    'Envelope-To':  keep(envelopeTo),\n    'Received-For': keep(receivedFor),\n    'Bcc':          keep(addrs(j.bcc ?? get('bcc'))),\n    'To Header':    keep(addrs(j.to  ?? get('to'))),\n    'Cc Header':    keep(addrs(j.cc  ?? get('cc'))),\n  };\n\n  // A staff member forwarding customer mail by hand: the envelope points at the\n  // funnel, so the forwarding employee is the owner.\n  const envelopeHitsFunnel = addrs(get('envelope-to')).map(norm).includes(FUNNEL);\n  if (isInternal(fromEmail) && fromEmail !== FUNNEL) cand['Manual Forward Sender'] = [fromEmail];\n\n  const all = [];\n  for (const k of ORDER) for (const a of (cand[k] || [])) if (!all.includes(a)) all.push(a);\n\n  let method = 'Unresolved', recipient = null;\n  for (const k of ORDER) if ((cand[k] || []).length) { method = k; recipient = cand[k][0]; break; }\n\n  const messageClass = !isInternal(fromEmail) ? 'external'\n    : (envelopeHitsFunnel || cand['Envelope-To'].length === 0) ? 'manual_forward' : 'internal';\n\n  out.push({ json: { ...j,\n    _recipient: recipient,\n    _recipients: all,\n    _resolution_method: method,\n    _from_email: fromEmail,\n    _message_class: messageClass,\n  }, binary: item.binary });\n}\nreturn out;\n"
       },
       "id": "resolve-original-recipient",
       "name": "Resolve Original Recipient",
@@ -90,7 +91,8 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
-            "version": 2
+            "version": 2,
+            "typeValidation": "loose"
           },
           "combinator": "and",
           "conditions": [
@@ -100,12 +102,14 @@
                 "type": "boolean",
                 "operation": "true"
               },
-              "leftValue": "={{ $json._noise && !$json._thread_found }}",
+              "leftValue": "={{ !!$json._noise && !$json._thread_found }}",
               "rightValue": ""
             }
           ]
         },
-        "options": {}
+        "options": {
+          "looseTypeValidation": true
+        }
       },
       "id": "is-noise?",
       "name": "Is Noise?",
@@ -196,7 +200,8 @@
         "conditions": {
           "options": {
             "caseSensitive": true,
-            "version": 2
+            "version": 2,
+            "typeValidation": "loose"
           },
           "combinator": "and",
           "conditions": [
@@ -211,7 +216,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "looseTypeValidation": true
+        }
       },
       "id": "is-inquiry?",
       "name": "Is Inquiry?",
@@ -722,7 +729,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 2
           },
           "combinator": "and",
@@ -733,12 +740,14 @@
                 "type": "boolean",
                 "operation": "true"
               },
-              "leftValue": "={{ $json._thread_found }}",
+              "leftValue": "={{ !!$json._thread_found }}",
               "rightValue": ""
             }
           ]
         },
-        "options": {}
+        "options": {
+          "looseTypeValidation": true
+        }
       },
       "id": "a1000000-0000-4000-8000-00000000f003",
       "name": "Is Reply?",
