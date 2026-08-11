@@ -202,6 +202,20 @@ def _as_datetime(value):
 	return dt
 
 
+def _collapse_ws(raw) -> str:
+	"""Strip all whitespace from a header value.
+
+	Used as the last-resort fallback when a value could not be parsed as a
+	Message-ID. Storing the raw folded text instead would guarantee the value
+	never matches itself on a later lookup.
+	"""
+	if raw is None:
+		return ""
+	if isinstance(raw, (list, tuple)):
+		raw = raw[0] if raw else ""
+	return re.sub(r"\s+", "", str(raw))
+
+
 def _msgid_list(raw) -> list[str]:
 	"""Extract Message-IDs from a header value, preserving their order."""
 	if not raw:
@@ -211,12 +225,27 @@ def _msgid_list(raw) -> list[str]:
 	else:
 		text = str(raw)
 
+	# Unfold first. RFC 5322 wraps long headers onto continuation lines, and
+	# Outlook's Message-IDs are long enough to wrap mid-id:
+	#
+	#     Message-ID: <CWLP302MB03493C11DA75793B53C4011CA8DE2@CW
+	#      LP302MB0349.GBRP302.PROD.OUTLOOK.COM>
+	#
+	# _MSGID_RE excludes whitespace between the brackets, so a folded id matched
+	# nothing and the bare-token fallback rejected it too (the fold introduces a
+	# space). ingest_inquiry_email then stored an empty message_id, silently
+	# disabling both deduplication and thread matching -- the same RFQ ingested
+	# twice produced two tickets. A msg-id never legitimately contains
+	# whitespace, and References entries stay separable because each keeps its
+	# own angle brackets, so collapsing every space here is safe.
+	text = re.sub(r"\s+", "", text)
+
 	found = _MSGID_RE.findall(text)
 	if not found:
 		# Some senders omit the angle brackets. Fall back to the bare token,
 		# but only when it still looks like a msg-id rather than prose.
-		bare = text.split(":", 1)[-1].strip()
-		if bare and "@" in bare and " " not in bare:
+		bare = text.split(":", 1)[-1]
+		if bare and "@" in bare and "<" not in bare:
 			found = [f"<{bare.strip('<>')}>"]
 
 	seen, out = set(), []
@@ -358,7 +387,10 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	# but the raw-header fallback yields "Message-ID:\n\t<id@host>". Storing the
 	# unnormalised form would make dedup and thread lookups miss each other,
 	# since find_inquiry_by_thread always compares the bracketed id.
-	message_id = _first_msgid(data.get("message_id")) or (data.get("message_id") or "").strip()
+	# Collapse whitespace rather than only trimming the ends: a folded header
+	# that _first_msgid could not parse would otherwise be stored verbatim,
+	# newlines and all, and never match itself on the next lookup.
+	message_id = _first_msgid(data.get("message_id")) or _collapse_ws(data.get("message_id"))
 	if not message_id:
 		frappe.throw(_("message_id is required for idempotent ingestion."))
 
@@ -538,8 +570,8 @@ def attach_email_to_ticket(
 
 	# Same normalisation as ingest_inquiry_email, so the child table and the
 	# thread lookup are always comparing the identical bracketed form.
-	message_id = _first_msgid(message_id) or (message_id or "").strip()
-	thread_id = _first_msgid(thread_id) or (thread_id or "").strip()
+	message_id = _first_msgid(message_id) or _collapse_ws(message_id)
+	thread_id = _first_msgid(thread_id) or _collapse_ws(thread_id)
 
 	if message_id and any((row.message_id or "") == message_id for row in doc.emails or []):
 		return {"ticket": ticket, "appended": False, "reason": "already linked"}
