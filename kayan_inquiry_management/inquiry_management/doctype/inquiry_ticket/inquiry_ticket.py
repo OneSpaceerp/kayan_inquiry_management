@@ -274,7 +274,12 @@ class InquiryTicket(Document):
 		settings = get_inquiry_settings()
 		if settings and settings.assignment_sla_hours:
 			now = frappe.utils.now_datetime()
-			self.sla_assignment_deadline = calculate_sla_deadline(now, settings.assignment_sla_hours)
+			# Pass the company: calculate_sla_deadline resolves the Holiday List from
+			# it, and without it no holiday is ever skipped -- deadlines silently
+			# counted Eid and national holidays as working days.
+			self.sla_assignment_deadline = calculate_sla_deadline(
+				now, settings.assignment_sla_hours, self.company
+			)
 			self.sla_status = "Active"
 
 	def _update_sla_on_transition(self, previous_status: str | None = None):
@@ -296,7 +301,7 @@ class InquiryTicket(Document):
 		if self.status == "Assigned to Application Engineer" and settings.technical_sla_hours:
 			self.db_set(
 				"sla_technical_deadline",
-				calculate_sla_deadline(now, settings.technical_sla_hours),
+				calculate_sla_deadline(now, settings.technical_sla_hours, self.company),
 				update_modified=False,
 			)
 
@@ -304,7 +309,7 @@ class InquiryTicket(Document):
 		if self.status == "Quotation Preparation In Progress" and settings.quotation_sla_hours:
 			self.db_set(
 				"sla_quotation_deadline",
-				calculate_sla_deadline(now, settings.quotation_sla_hours),
+				calculate_sla_deadline(now, settings.quotation_sla_hours, self.company),
 				update_modified=False,
 			)
 

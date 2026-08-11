@@ -185,21 +185,42 @@ NON_WORKING_WEEKDAYS = {4, 5}  # Friday, Saturday
 
 
 def _get_holiday_dates(company: str | None = None) -> set:
-	"""Return the set of holiday dates from the Company's default Holiday List."""
-	holiday_list = None
-	if company:
-		holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
-	if not holiday_list:
-		holiday_list = frappe.db.get_single_value("HR Settings", "default_holiday_list")
-	if not holiday_list:
-		return set()
+	"""Return the set of holiday dates from the Company's default Holiday List.
 
-	rows = frappe.get_all(
-		"Holiday",
-		filters={"parent": holiday_list},
-		pluck="holiday_date",
-	)
-	return set(rows or [])
+	Never raises. This feeds the SLA due-date calculation, which runs inside
+	Inquiry Ticket's before_insert hook -- so anything that throws here aborts
+	ticket creation entirely and the customer's inquiry is lost over a calendar
+	lookup. An empty set degrades to "weekends only", which is a slightly
+	optimistic due date, not a dropped inquiry.
+	"""
+	holiday_list = None
+	try:
+		if company:
+			holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
+
+		if not holiday_list and frappe.db.exists("DocType", "HR Settings"):
+			# HRMS releases disagree about where this lives: older ones kept a
+			# default_holiday_list on HR Settings, current ones do not. Frappe v15
+			# validates the fieldname and raises ValidationError when it is absent
+			# rather than returning None, so ask the meta before asking the field.
+			if frappe.get_meta("HR Settings").has_field("default_holiday_list"):
+				holiday_list = frappe.db.get_single_value("HR Settings", "default_holiday_list")
+
+		if not holiday_list:
+			return set()
+
+		rows = frappe.get_all(
+			"Holiday",
+			filters={"parent": holiday_list},
+			pluck="holiday_date",
+		)
+		return set(rows or [])
+	except Exception:
+		frappe.log_error(
+			title="Inquiry SLA: holiday list lookup failed",
+			message=f"company={company}\n\n{frappe.get_traceback()}",
+		)
+		return set()
 
 
 def _is_working_day(dt, holidays: set) -> bool:
