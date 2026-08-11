@@ -162,7 +162,7 @@
         "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({model:\"gemini-flash-latest\",messages:[{role:\"system\",content:\"You classify B2B commercial email for an Egyptian HVAC and pumps distributor. Reply ONLY with JSON: {\\\"is_inquiry\\\":bool,\\\"classification\\\":\\\"RFQ|Quotation Request|Tender|Budget Request|Commercial Inquiry|RFP|Not an Inquiry\\\",\\\"confidence\\\":0-100,\\\"priority\\\":\\\"Low|Medium|High|Urgent\\\",\\\"summary\\\":\\\"one line\\\"}\"},{role:\"user\",content:(\"Subject: \"+($json._original_subject||\"\")+\"\\n\\n\"+String($json.textPlain||$json.text||\"\").slice(0,6000))}],max_tokens:300}) }}"
+        "jsonBody": "={{ JSON.stringify({model:\"gemini-flash-latest\",messages:[{role:\"system\",content:\"You classify B2B commercial email for an Egyptian HVAC and pumps distributor. Reply ONLY with JSON: {\\\"is_inquiry\\\":bool,\\\"classification\\\":\\\"RFQ|Quotation Request|Tender|Budget Request|Commercial Inquiry|RFP|Not an Inquiry\\\",\\\"confidence\\\":0-100,\\\"priority\\\":\\\"Low|Medium|High|Urgent\\\",\\\"summary\\\":\\\"one line\\\"}\"},{role:\"user\",content:(\"Subject: \"+($json._original_subject||\"\")+\"\\n\\n\"+String($json.textPlain||$json.text||\"\").slice(0,6000))}],max_tokens:2000}) }}"
       },
       "id": "classify-with-openrouter",
       "name": "Classify with OpenRouter",
