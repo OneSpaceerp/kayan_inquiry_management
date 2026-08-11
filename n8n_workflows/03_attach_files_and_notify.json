@@ -133,7 +133,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
+            "typeValidation": "loose",
             "version": 2
           },
           "combinator": "and",
@@ -149,7 +149,9 @@
             }
           ]
         },
-        "options": {}
+        "options": {
+          "looseTypeValidation": true
+        }
       },
       "id": "a1000000-0000-4000-8000-00000000f101",
       "name": "Has Files?",

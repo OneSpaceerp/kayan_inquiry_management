@@ -185,7 +185,7 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "loose"
           },
           "conditions": [
             {
@@ -200,7 +200,9 @@
           ],
           "combinator": "and"
         },
-        "options": {}
+        "options": {
+          "looseTypeValidation": true
+        }
       },
       "id": "f5cde21c-ae38-4e89-9a2f-b42e0a298cb5",
       "name": "Has Next Level?",
