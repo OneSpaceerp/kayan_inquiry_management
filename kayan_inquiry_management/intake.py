@@ -18,6 +18,14 @@ with no ticket. The ``ignore_permissions`` / ``ignore_mandatory`` /
 ``frappe.db.commit()`` cluster in the old helpers existed to paper over exactly
 that fragility.
 
+One deliberate ``ignore_mandatory`` survives, in ``_ensure_opportunity``, and it
+is not the same thing: Kayan's Opportunity carries mandatory fields (contractor,
+consultant, owner/end user, project sector, scope of supply) that describe a
+qualified deal, and no inbound RFQ contains them. That flag encodes a domain
+fact — the record is completed by a human at qualification — rather than hiding
+a transactional defect. Do not remove it without also giving intake a source for
+those values.
+
 Centralised intake also makes duplicates *structural* rather than incidental: a
 customer who BCCs three Kayan engineers on one RFQ generates three forwarded
 copies sharing a Message-ID. Deduplication therefore cannot be a best-effort
@@ -371,7 +379,19 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	customer, lead = _match_or_create_party(contact, company)
 
 	# ---- 4. Opportunity -----------------------------------------------------
-	opportunity = _ensure_opportunity(customer, lead, company)
+	# Never let CRM bookkeeping cost us the ticket. The Inquiry Ticket is this
+	# system's record of the customer's request; the Opportunity is a downstream
+	# convenience. Because this runs before ticket.insert(), an exception here
+	# used to abort the request and roll the ticket back with it -- a mandatory
+	# field on a customised Opportunity silently discarded the whole inquiry.
+	try:
+		opportunity = _ensure_opportunity(customer, lead, company, owner_user)
+	except Exception:
+		frappe.log_error(
+			title="Inquiry intake: Opportunity creation failed",
+			message=f"message_id={message_id}\n\n{frappe.get_traceback()}",
+		)
+		opportunity = None
 
 	# ---- 5. Create the ticket ----------------------------------------------
 	unresolved = not owner_user
@@ -671,8 +691,18 @@ def _match_or_create_party(contact: dict, company: str | None):
 	return None, lead_doc.name
 
 
-def _ensure_opportunity(customer, lead, company):
-	"""Link an open Opportunity for the party, creating one when absent."""
+def _ensure_opportunity(customer, lead, company, owner_user=None):
+	"""Link an open Opportunity for the party, creating one when absent.
+
+	Kayan customise Opportunity with mandatory fields that only a human can
+	supply at qualification: contractor, consultant, owner/end user, project,
+	project sector and scope of supply are commercial facts, not something an
+	inbound RFQ carries. Intake therefore inserts a skeleton with
+	``ignore_mandatory`` and fills only what it can honestly know. Validation
+	still fires the moment a sales engineer opens the record and saves it, so
+	the completeness requirement moves to the person who can actually satisfy
+	it rather than blocking ingestion.
+	"""
 	party = customer or lead
 	if not party:
 		return None
@@ -693,8 +723,11 @@ def _ensure_opportunity(customer, lead, company):
 			"party_name": party,
 			"company": company,
 			"status": "Open",
+			# The one custom mandatory field intake can fill honestly.
+			"opportunity_owner": owner_user or None,
 		}
 	)
+	opp.flags.ignore_mandatory = True
 	opp.insert(ignore_permissions=True)
 	return opp.name
 
