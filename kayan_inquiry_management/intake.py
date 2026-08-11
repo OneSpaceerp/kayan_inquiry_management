@@ -35,9 +35,12 @@ concurrent n8n executions will race and create three tickets.
 
 import json
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import frappe
 from frappe import _
+from frappe.utils import get_datetime
 
 from kayan_inquiry_management.utils import (
 	create_audit_event,
@@ -151,6 +154,52 @@ def resolve_assignment(recipient_email: str, company: str | None = None) -> dict
 # clean from n8n's resolved format or raw with the field name and folded
 # whitespace still attached, so parse both through the same regex.
 _MSGID_RE = re.compile(r"<[^<>\s]+@[^<>\s]+>")
+
+# Letters and hyphens only, so a leading "Delivery-date:" is stripped while an
+# ISO value like 2026-08-10T03:09:44Z -- which also contains a colon -- is not.
+_HEADER_PREFIX_RE = re.compile(r"^\s*[A-Za-z][A-Za-z-]*:\s*")
+
+
+def _as_datetime(value):
+	"""Normalise whatever a caller sends into a datetime Frappe can store.
+
+	``received_on`` and ``received_date`` are Datetime fields, and the callers are
+	automation workflows handing over raw mail headers. This IMAP server returns
+	some of them with the field name still attached ("Delivery-date: Mon, 10 Aug
+	2026 03:09:44 +0000"), which no date parser accepts -- so the value silently
+	became null and the SLA clock started from nothing.
+
+	Accepts RFC 2822 header form and ISO, returns naive UTC so both paths agree,
+	and returns None when the value cannot be understood so the caller's own
+	fallback applies rather than a wrong timestamp being stored.
+	"""
+	if isinstance(value, (list, tuple)):
+		value = value[0] if value else None
+	if not value:
+		return None
+
+	text = _HEADER_PREFIX_RE.sub("", str(value)).strip()
+	if not text:
+		return None
+
+	dt = None
+	try:
+		dt = datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith("Z") else text)
+	except ValueError:
+		try:
+			dt = parsedate_to_datetime(text)
+		except (TypeError, ValueError):
+			dt = None
+
+	if dt is None:
+		try:
+			return get_datetime(text)
+		except Exception:
+			return None
+
+	if dt.tzinfo is not None:
+		dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+	return dt
 
 
 def _msgid_list(raw) -> list[str]:
@@ -403,8 +452,8 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 			"priority": data.get("priority") or "Medium",
 			"inquiry_type": data.get("classification") or "",
 			"original_email_subject": data.get("subject"),
-			"received_date": data.get("received_date"),
-			"original_sent_date": data.get("sent_date"),
+			"received_date": _as_datetime(data.get("received_date")),
+			"original_sent_date": _as_datetime(data.get("sent_date")),
 			"message_id": message_id,
 			"original_recipient": resolution["recipient"],
 			"original_recipients": "\n".join(resolution["recipients"]),
@@ -516,7 +565,7 @@ def attach_email_to_ticket(
 			"subject": subject,
 			"email_from": email_from,
 			"email_to": email_to,
-			"received_on": received_on or frappe.utils.now_datetime(),
+			"received_on": _as_datetime(received_on) or frappe.utils.now_datetime(),
 			"email_file": email_file or None,
 		},
 	)
@@ -772,7 +821,7 @@ def _append_email(ticket, data, resolution, direction="Incoming"):
 			"email_from": headers.get("from_email"),
 			"email_to": resolution["recipient"] or "",
 			"cc": "\n".join(cc) if isinstance(cc, list) else (cc or ""),
-			"received_on": data.get("received_date"),
+			"received_on": _as_datetime(data.get("received_date")),
 			"email_file": data.get("email_file"),
 		},
 	)
