@@ -178,7 +178,8 @@
    "label": "Message ID",
    "read_only": 1,
    "search_index": 1,
-   "description": "RFC 5322 Message-ID of the source email. Deduplication key: one BCC blast delivered to several Kayan staff arrives as multiple copies sharing this value."
+   "description": "RFC 5322 Message-ID of the source email. Deduplication key: one BCC blast delivered to several Kayan staff arrives as multiple copies sharing this value.",
+   "ignore_xss_filter": 1
   },
   {
    "fieldname": "original_recipient",
