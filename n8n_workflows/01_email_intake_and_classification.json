@@ -7,7 +7,8 @@
         "options": {
           "allowUnauthorizedCerts": true,
           "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 1}).toFormat('dd-LLL-yyyy')]]) }}"
-        }
+        },
+        "postProcessAction": "read"
       },
       "id": "imap-trigger",
       "name": "IMAP Email Trigger",
