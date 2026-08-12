@@ -36,6 +36,8 @@
   "lead",
   "opportunity",
   "customer_match_method",
+  "project",
+  "project_match_method",
   "ownership_section",
   "sales_engineer",
   "inquiry_coordinator",
@@ -291,6 +293,21 @@
    "options": "\nCompany Name\nEmail Domain\nEmail Address\nManual",
    "read_only": 1,
    "description": "How the customer was matched (auto or manual)."
+  },
+  {
+   "fieldname": "project",
+   "fieldtype": "Link",
+   "label": "Project",
+   "options": "Project",
+   "description": "ERPNext Project this inquiry belongs to. Matched from the extracted project name, or created when no existing Project matches."
+  },
+  {
+   "fieldname": "project_match_method",
+   "fieldtype": "Select",
+   "label": "Project Match Method",
+   "options": "\nExact\nAI Suggested\nCreated\nUnmatched",
+   "read_only": 1,
+   "description": "How the Project was resolved. 'Created' means no existing Project matched and a new one was opened -- worth reviewing, since a near-miss creates a duplicate."
   },
   {
    "fieldname": "ownership_section",

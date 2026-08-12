@@ -466,7 +466,27 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	# used to abort the request and roll the ticket back with it -- a mandatory
 	# field on a customised Opportunity silently discarded the whole inquiry.
 	try:
-		opportunity = _ensure_opportunity(customer, lead, company, owner_user)
+		project, project_match = _match_or_create_project(
+			(data.get("inquiry") or {}).get("project_name"), customer, company
+		)
+	except Exception:
+		frappe.log_error(
+			title="Inquiry intake: Project match failed",
+			message=f"message_id={message_id}\n\n{frappe.get_traceback()}",
+		)
+		project, project_match = None, "Unmatched"
+
+	try:
+		opportunity = _ensure_opportunity(customer, lead, company, owner_user, project)
+		# An Opportunity reused from an earlier inquiry may predate project
+		# matching, or have been opened before the project was known. Fill the
+		# gap, but never overwrite a value a human has already chosen.
+		if opportunity and project and not frappe.db.get_value(
+			"Opportunity", opportunity, "custom_project"
+		):
+			frappe.db.set_value(
+				"Opportunity", opportunity, "custom_project", project, update_modified=False
+			)
 	except Exception:
 		frappe.log_error(
 			title="Inquiry intake: Opportunity creation failed",
@@ -505,6 +525,8 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 			"customer": customer,
 			"lead": lead,
 			"opportunity": opportunity,
+			"project": project,
+			"project_match_method": project_match,
 			"customer_match_method": data.get("match_method") or "",
 			"ai_classification": data.get("classification"),
 			"ai_confidence": data.get("confidence") or 0,
@@ -772,7 +794,57 @@ def _match_or_create_party(contact: dict, company: str | None):
 	return None, lead_doc.name
 
 
-def _ensure_opportunity(customer, lead, company, owner_user=None):
+def _normalise_project_name(raw) -> str:
+	"""Fold a project name to a comparable key.
+
+	Kayan's Project master is hand-entered and inconsistent -- one live record is
+	literally ``"G3 MALL "`` with a trailing space -- while the name we extract
+	comes off a subject line. Comparing raw strings would miss almost every real
+	match and create a duplicate Project instead, so both sides are folded to
+	lowercase alphanumerics before comparison.
+	"""
+	return re.sub(r"[^a-z0-9]+", "", (raw or "").lower())
+
+
+def _match_or_create_project(project_name, customer=None, company=None):
+	"""Resolve an extracted project name to a Project, creating one if needed.
+
+	Returns ``(project, method)`` where method is Exact, Created or Unmatched, so
+	the ticket records how the link was arrived at. 'Created' is the one worth
+	auditing: a near-miss on the name opens a duplicate Project rather than
+	joining the existing one.
+	"""
+	name = (project_name or "").strip()
+	if not name:
+		return None, "Unmatched"
+
+	key = _normalise_project_name(name)
+	if not key:
+		return None, "Unmatched"
+
+	for row in frappe.get_all("Project", fields=["name", "project_name"], limit_page_length=0):
+		if _normalise_project_name(row.project_name) == key:
+			return row.name, "Exact"
+
+	# No match: open one. Project may carry mandatory customisations the way
+	# Opportunity does, and the same rule applies -- a CRM record must never cost
+	# us the inquiry, so this is best-effort and the caller tolerates None.
+	proj = frappe.get_doc(
+		{
+			"doctype": "Project",
+			"project_name": name,
+			"status": "Open",
+			"is_active": "Yes",
+			"company": company or _default_company(),
+			"customer": customer or None,
+		}
+	)
+	proj.flags.ignore_mandatory = True
+	proj.insert(ignore_permissions=True)
+	return proj.name, "Created"
+
+
+def _ensure_opportunity(customer, lead, company, owner_user=None, project=None):
 	"""Link an open Opportunity for the party, creating one when absent.
 
 	Kayan customise Opportunity with mandatory fields that only a human can
@@ -804,8 +876,9 @@ def _ensure_opportunity(customer, lead, company, owner_user=None):
 			"party_name": party,
 			"company": company,
 			"status": "Open",
-			# The one custom mandatory field intake can fill honestly.
+			# The custom mandatory fields intake can fill honestly.
 			"opportunity_owner": owner_user or None,
+			"custom_project": project or None,
 		}
 	)
 	opp.flags.ignore_mandatory = True
