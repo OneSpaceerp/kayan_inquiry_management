@@ -148,7 +148,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "url": "https://api.cerebras.ai/v1/chat/completions",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -160,10 +160,17 @@
             }
           ]
         },
-        "options": {},
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          }
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({model:\"gemini-flash-latest\",messages:[{role:\"system\",content:\"You classify B2B commercial email for an Egyptian HVAC and pumps distributor. Reply ONLY with JSON: {\\\"is_inquiry\\\":bool,\\\"classification\\\":\\\"RFQ|Quotation Request|Tender|Budget Request|Commercial Inquiry|RFP|Not an Inquiry\\\",\\\"confidence\\\":0-100,\\\"priority\\\":\\\"Low|Medium|High|Urgent\\\",\\\"summary\\\":\\\"one line\\\"}\"},{role:\"user\",content:(\"Subject: \"+($json._original_subject||\"\")+\"\\n\\n\"+String($json.textPlain||$json.text||\"\").slice(0,6000))}],max_tokens:2000}) }}"
+        "jsonBody": "={{ JSON.stringify({model:\"llama-3.3-70b\",messages:[{role:\"system\",content:\"You classify B2B commercial email for an Egyptian HVAC and pumps distributor. Reply ONLY with JSON: {\\\"is_inquiry\\\":bool,\\\"classification\\\":\\\"RFQ|Quotation Request|Tender|Budget Request|Commercial Inquiry|RFP|Not an Inquiry\\\",\\\"confidence\\\":0-100,\\\"priority\\\":\\\"Low|Medium|High|Urgent\\\",\\\"summary\\\":\\\"one line\\\"}\"},{role:\"user\",content:(\"Subject: \"+($json._original_subject||\"\")+\"\\n\\n\"+String($json.textPlain||$json.text||\"\").slice(0,6000))}],max_tokens:2000}) }}"
       },
       "id": "classify-with-openrouter",
       "name": "Classify with OpenRouter",
@@ -388,7 +395,14 @@
             }
           ]
         },
-        "options": {},
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 20000
+            }
+          }
+        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({model:\"gemini-flash-latest\",messages:[{role:\"user\",content:[{type:\"text\",text:\"Transcribe all text, tables and quantities from this document image. Preserve table structure.\"},{type:\"image_url\",image_url:{url:(\"data:\"+($binary[$json._att_key].mimeType||\"image/png\")+\";base64,\"+$binary[$json._att_key].data)}}]}],max_tokens:4000}) }}"
@@ -498,7 +512,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "url": "https://api.cerebras.ai/v1/chat/completions",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
@@ -510,10 +524,17 @@
             }
           ]
         },
-        "options": {},
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          }
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({model:\"gemini-flash-latest\",messages:[{role:\"system\",content:\"Extract structured data from a B2B inquiry. Reply ONLY with JSON: {\\\"contact\\\":{\\\"first_name\\\":\\\"\\\",\\\"last_name\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"email\\\":\\\"\\\",\\\"phones\\\":[]},\\\"project_name\\\":\\\"name of the project this RFQ is for, or empty\\\",\\\"delivery_location\\\":\\\"\\\",\\\"due_date\\\":\\\"YYYY-MM-DD or null\\\",\\\"tender_number\\\":\\\"\\\",\\\"items\\\":[{\\\"description\\\":\\\"\\\",\\\"quantity\\\":0,\\\"uom\\\":\\\"\\\"}]}\"},{role:\"user\",content:(\"Subject: \"+($('Parse AI Output').first().json._original_subject||\"\")+\"\\n\\nBody:\\n\"+String($('Parse AI Output').first().json.textPlain||\"\").slice(0,8000)+\"\\n\\nAttachments:\\n\"+String($json._attachment_text||\"\").slice(0,20000))}],max_tokens:2000}) }}"
+        "jsonBody": "={{ JSON.stringify({model:\"llama-3.3-70b\",messages:[{role:\"system\",content:\"Extract structured data from a B2B inquiry. Reply ONLY with JSON: {\\\"contact\\\":{\\\"first_name\\\":\\\"\\\",\\\"last_name\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"email\\\":\\\"\\\",\\\"phones\\\":[]},\\\"project_name\\\":\\\"name of the project this RFQ is for, or empty\\\",\\\"delivery_location\\\":\\\"\\\",\\\"due_date\\\":\\\"YYYY-MM-DD or null\\\",\\\"tender_number\\\":\\\"\\\",\\\"items\\\":[{\\\"description\\\":\\\"\\\",\\\"quantity\\\":0,\\\"uom\\\":\\\"\\\"}]}\"},{role:\"user\",content:(\"Subject: \"+($('Parse AI Output').first().json._original_subject||\"\")+\"\\n\\nBody:\\n\"+String($('Parse AI Output').first().json.textPlain||\"\").slice(0,8000)+\"\\n\\nAttachments:\\n\"+String($json._attachment_text||\"\").slice(0,12000))}],max_tokens:2000}) }}"
       },
       "id": "extract-metadata",
       "name": "Extract Metadata",
@@ -564,7 +585,7 @@
         "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({task_type:\"Data Extraction\",provider:\"Google AI Studio\",model:\"gemini-flash-latest\",status:\"Completed\"}) }}"
+        "jsonBody": "={{ JSON.stringify({task_type:\"Data Extraction\",provider:\"Cerebras\",model:\"llama-3.3-70b\",status:\"Completed\"}) }}"
       },
       "id": "log-ai-call",
       "name": "Log AI Call",
@@ -586,7 +607,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\n// Assemble the single payload for ingest_inquiry_email. Everything the previous\n// eight-call chain discovered incrementally is decided server-side now.\nconst src = $('Unwrap Forwarded Message').first().json;\nconst cls = $('Parse AI Output').first().json || {};\nlet ext = {};\ntry { ext = $('Parse Extraction Output').first().json || {}; } catch (e) { ext = {}; }\nlet boq = [];\ntry { boq = ($('Parse BoQ Spreadsheet').all() || []).flatMap(i => i.json._boq_items || []); } catch (e) { boq = []; }\n\nconst h = src.headers || {};\nconst g = k => h[k] ?? h[k.toLowerCase()] ?? null;\nconst list = v => !v ? [] : (Array.isArray(v) ? v : String(v).match(/[\\w.+-]+@[\\w.-]+\\.\\w+/g) || []);\n\n// This IMAP server returns some headers with the field name still attached\n// (\"Delivery-date: Mon, 10 Aug 2026 03:09:44 +0000\"). received_date and\n// original_sent_date are Datetime on the ticket, so that string never parses\n// and the SLA clock silently starts from null. Strip a leading header name --\n// letters and hyphens only, so an ISO value like 2026-08-10T03:09:43Z is left\n// alone -- then normalise to ISO.\nconst asDate = v => {\n  if (!v) return null;\n  const s = String(Array.isArray(v) ? v[0] : v).replace(/^\\s*[A-Za-z][A-Za-z-]*:\\s*/, '').trim();\n  const d = new Date(s);\n  return isNaN(d.getTime()) ? null : d.toISOString();\n};\n\nconst items = [...(ext.items || []), ...boq];\n\nreturn [{ json: {\n  message_id:    src.messageId || g('message-id') || '',\n  thread_id:     src.threadId || g('references') || '',\n  // Sent for the server-side thread check. n8n's Find Thread node runs against a\n  // database that does not yet contain tickets created later in the same pass,\n  // so ingest repeats the lookup with these headers as the authoritative pass.\n  in_reply_to:   src.inReplyTo || g('in-reply-to') || '',\n  references:    [].concat(src.references || g('references') || []).join(' '),\n  subject:       src._original_subject || src.subject || '',\n  // Delivery-date is arrival; the Date header is when the customer sent it. A\n  // two-week-old forward would otherwise start life already SLA-breached.\n  received_date: asDate(g('delivery-date')) || asDate(src.date) || null,\n  sent_date:     asDate(src._original_sent) || asDate(src.date) || null,\n  classification: cls.classification || cls.inquiry_type || null,\n  confidence:     cls.confidence ?? 0,\n  ai_provider:    'Google AI Studio',\n  summary:        cls.summary || null,\n  priority:       cls.priority || 'Medium',\n  headers: {\n    envelope_to:  list(g('envelope-to')),\n    received_for: src._recipients || [],\n    bcc:          list(src.bcc || g('bcc')),\n    to:           list(src.to  || g('to')),\n    cc:           list(src.cc  || g('cc')),\n    from_email:   src._from_email || '',\n  },\n  contact: {\n    first_name:   (ext.contact && ext.contact.first_name) || null,\n    last_name:    (ext.contact && ext.contact.last_name) || null,\n    name:         src._customer_name || null,\n    company_name: (ext.contact && ext.contact.company_name) || null,\n    email:        src._customer_email || (ext.contact && ext.contact.email) || null,\n    phones:       (ext.contact && ext.contact.phones) || [],\n  },\n  inquiry: {\n    project_name:      ext.project_name || null,\n    delivery_location: ext.delivery_location || null,\n    due_date:          ext.due_date || null,\n    tender_number:     ext.tender_number || null,\n  },\n  items,\n  extracted: ext,\n} }];\n"
+        "jsCode": "\n// Assemble the single payload for ingest_inquiry_email. Everything the previous\n// eight-call chain discovered incrementally is decided server-side now.\nconst src = $('Unwrap Forwarded Message').first().json;\nconst cls = $('Parse AI Output').first().json || {};\nlet ext = {};\ntry { ext = $('Parse Extraction Output').first().json || {}; } catch (e) { ext = {}; }\nlet boq = [];\ntry { boq = ($('Parse BoQ Spreadsheet').all() || []).flatMap(i => i.json._boq_items || []); } catch (e) { boq = []; }\n\nconst h = src.headers || {};\nconst g = k => h[k] ?? h[k.toLowerCase()] ?? null;\nconst list = v => !v ? [] : (Array.isArray(v) ? v : String(v).match(/[\\w.+-]+@[\\w.-]+\\.\\w+/g) || []);\n\n// This IMAP server returns some headers with the field name still attached\n// (\"Delivery-date: Mon, 10 Aug 2026 03:09:44 +0000\"). received_date and\n// original_sent_date are Datetime on the ticket, so that string never parses\n// and the SLA clock silently starts from null. Strip a leading header name --\n// letters and hyphens only, so an ISO value like 2026-08-10T03:09:43Z is left\n// alone -- then normalise to ISO.\nconst asDate = v => {\n  if (!v) return null;\n  const s = String(Array.isArray(v) ? v[0] : v).replace(/^\\s*[A-Za-z][A-Za-z-]*:\\s*/, '').trim();\n  const d = new Date(s);\n  return isNaN(d.getTime()) ? null : d.toISOString();\n};\n\nconst items = [...(ext.items || []), ...boq];\n\nreturn [{ json: {\n  message_id:    src.messageId || g('message-id') || '',\n  thread_id:     src.threadId || g('references') || '',\n  // Sent for the server-side thread check. n8n's Find Thread node runs against a\n  // database that does not yet contain tickets created later in the same pass,\n  // so ingest repeats the lookup with these headers as the authoritative pass.\n  in_reply_to:   src.inReplyTo || g('in-reply-to') || '',\n  references:    [].concat(src.references || g('references') || []).join(' '),\n  subject:       src._original_subject || src.subject || '',\n  // Delivery-date is arrival; the Date header is when the customer sent it. A\n  // two-week-old forward would otherwise start life already SLA-breached.\n  received_date: asDate(g('delivery-date')) || asDate(src.date) || null,\n  sent_date:     asDate(src._original_sent) || asDate(src.date) || null,\n  classification: cls.classification || cls.inquiry_type || null,\n  confidence:     cls.confidence ?? 0,\n  ai_provider:    'Cerebras',\n  summary:        cls.summary || null,\n  priority:       cls.priority || 'Medium',\n  headers: {\n    envelope_to:  list(g('envelope-to')),\n    received_for: src._recipients || [],\n    bcc:          list(src.bcc || g('bcc')),\n    to:           list(src.to  || g('to')),\n    cc:           list(src.cc  || g('cc')),\n    from_email:   src._from_email || '',\n  },\n  contact: {\n    first_name:   (ext.contact && ext.contact.first_name) || null,\n    last_name:    (ext.contact && ext.contact.last_name) || null,\n    name:         src._customer_name || null,\n    company_name: (ext.contact && ext.contact.company_name) || null,\n    email:        src._customer_email || (ext.contact && ext.contact.email) || null,\n    phones:       (ext.contact && ext.contact.phones) || [],\n  },\n  inquiry: {\n    project_name:      ext.project_name || null,\n    delivery_location: ext.delivery_location || null,\n    due_date:          ext.due_date || null,\n    tender_number:     ext.tender_number || null,\n  },\n  items,\n  extracted: ext,\n} }];\n"
       },
       "id": "build-ingest-payload",
       "name": "Build Ingest Payload",
