@@ -887,9 +887,21 @@ def _ensure_opportunity(customer, lead, company, owner_user=None, project=None):
 
 
 def _build_line_items(items) -> list:
-	"""Map extracted items to Inquiry Line Item rows."""
+	"""Map extracted items to Inquiry Line Item rows.
+
+	Rows without a description are dropped. The extraction prompt shows the model
+	an example schema containing ``{"description": "", "quantity": 0, "uom": ""}``,
+	and when an email has no itemised list the model tends to echo that empty
+	placeholder back rather than return an empty array. item_description is
+	mandatory on Inquiry Line Item, so passing it through raised MandatoryError
+	and cost us the whole ticket -- for a row that carried no information anyway.
+	"""
 	rows = []
-	for idx, item in enumerate(items or [], start=1):
+	for item in items or []:
+		description = (item.get("description") or item.get("item_description") or "").strip()
+		if not description:
+			continue
+		idx = len(rows) + 1
 		rows.append(
 			{
 				"line_no": idx,
