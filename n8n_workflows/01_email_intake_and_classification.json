@@ -6,7 +6,7 @@
         "format": "resolved",
         "options": {
           "allowUnauthorizedCerts": true,
-          "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 1}).toFormat('dd-LLL-yyyy')]]) }}",
+          "customEmailConfig": "={{ JSON.stringify(['UNSEEN', ['SINCE', $now.minus({days: 5}).toFormat('dd-LLL-yyyy')]]) }}",
           "forceReconnect": 60
         },
         "postProcessAction": "read"
