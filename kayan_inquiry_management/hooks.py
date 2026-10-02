@@ -25,6 +25,11 @@ required_apps = ["erpnext"]
 doc_events = {
 	"Opportunity": {
 		"validate": "kayan_inquiry_management.api.clean_opportunity_links",
+		# The qualify flow opens a prefilled Opportunity form rather than creating
+		# the record server-side, so the deal is saved outside our call stack and
+		# the ticket link has to be written here. on_update rather than
+		# after_insert: the user may save a draft before the ticket link matters.
+		"on_update": "kayan_inquiry_management.api.link_opportunity_to_inquiry",
 	},
 }
 

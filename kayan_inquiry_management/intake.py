@@ -18,13 +18,21 @@ with no ticket. The ``ignore_permissions`` / ``ignore_mandatory`` /
 ``frappe.db.commit()`` cluster in the old helpers existed to paper over exactly
 that fragility.
 
-One deliberate ``ignore_mandatory`` survives, in ``_ensure_opportunity``, and it
-is not the same thing: Kayan's Opportunity carries mandatory fields (contractor,
-consultant, owner/end user, project sector, scope of supply) that describe a
-qualified deal, and no inbound RFQ contains them. That flag encodes a domain
-fact — the record is completed by a human at qualification — rather than hiding
-a transactional defect. Do not remove it without also giving intake a source for
-those values.
+No ``ignore_mandatory`` survives. It used to, in an ``_ensure_opportunity`` that
+inserted a skeleton Opportunity from each inbound email — because Kayan's
+Opportunity carries mandatory fields (contractor, consultant, owner/end user,
+project sector, scope of supply) that describe a qualified deal and that no RFQ
+contains. Bypassing validation was treating the symptom. The cause was that
+intake was creating a record it had no business creating.
+
+Intake now *matches* and never *creates*. It links a Customer, Lead or Project
+only when one already exists and matches exactly; everything else is left for
+``qualify_inquiry``, which a sales engineer triggers from the ticket once they
+have read the mail. Matching an exact record is a fact. Creating one from a
+single email was a guess, and the guesses were expensive: duplicate Projects
+whenever a name differed by punctuation ("Parcel 06&07" vs "Parcel 6&7"), and
+Opportunities carrying ten blank mandatory fields that someone had to finish
+anyway.
 
 Centralised intake also makes duplicates *structural* rather than incidental: a
 customer who BCCs three Kayan engineers on one RFQ generates three forwarded
@@ -455,20 +463,27 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 	managers = get_managers_for_user(owner_user, company) if owner_user else []
 	responsible_manager = managers[0]["manager"] if managers else None
 
-	# ---- 3. Match the customer ---------------------------------------------
+	# ---- 3. Match the customer and project ---------------------------------
+	# Match only. Intake links the ticket to records that already exist and
+	# creates none of them: Lead, Project and Opportunity are all opened by the
+	# sales engineer from the ticket, through qualify_inquiry.
+	#
+	# Automatic creation is what produced duplicate Projects from near-miss
+	# names and Opportunities carrying ten blank mandatory fields. Both were
+	# guesses made from one email by code that could not ask anyone. Matching
+	# an exact existing record is not a guess, so that half stays.
 	contact = data.get("contact") or {}
-	customer, lead = _match_or_create_party(contact, company)
-
-	# ---- 4. Opportunity -----------------------------------------------------
-	# Never let CRM bookkeeping cost us the ticket. The Inquiry Ticket is this
-	# system's record of the customer's request; the Opportunity is a downstream
-	# convenience. Because this runs before ticket.insert(), an exception here
-	# used to abort the request and roll the ticket back with it -- a mandatory
-	# field on a customised Opportunity silently discarded the whole inquiry.
 	try:
-		project, project_match = _match_or_create_project(
-			(data.get("inquiry") or {}).get("project_name"), customer, company
+		customer, lead, customer_match = _match_party(contact, company)
+	except Exception:
+		frappe.log_error(
+			title="Inquiry intake: party match failed",
+			message=f"message_id={message_id}\n\n{frappe.get_traceback()}",
 		)
+		customer, lead, customer_match = None, None, "Unmatched"
+
+	try:
+		project, project_match = _match_project((data.get("inquiry") or {}).get("project_name"))
 	except Exception:
 		frappe.log_error(
 			title="Inquiry intake: Project match failed",
@@ -476,23 +491,7 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 		)
 		project, project_match = None, "Unmatched"
 
-	try:
-		opportunity = _ensure_opportunity(customer, lead, company, owner_user, project)
-		# An Opportunity reused from an earlier inquiry may predate project
-		# matching, or have been opened before the project was known. Fill the
-		# gap, but never overwrite a value a human has already chosen.
-		if opportunity and project and not frappe.db.get_value(
-			"Opportunity", opportunity, "custom_project"
-		):
-			frappe.db.set_value(
-				"Opportunity", opportunity, "custom_project", project, update_modified=False
-			)
-	except Exception:
-		frappe.log_error(
-			title="Inquiry intake: Opportunity creation failed",
-			message=f"message_id={message_id}\n\n{frappe.get_traceback()}",
-		)
-		opportunity = None
+	opportunity = None
 
 	# ---- 5. Create the ticket ----------------------------------------------
 	unresolved = not owner_user
@@ -527,7 +526,7 @@ def ingest_inquiry_email(payload: str | dict) -> dict:
 			"opportunity": opportunity,
 			"project": project,
 			"project_match_method": project_match,
-			"customer_match_method": data.get("match_method") or "",
+			"customer_match_method": customer_match,
 			"ai_classification": data.get("classification"),
 			"ai_confidence": data.get("confidence") or 0,
 			"ai_provider": data.get("ai_provider"),
@@ -754,13 +753,154 @@ def _first_phone(contact: dict) -> str | None:
 	return phones[0] if phones else None
 
 
-def _match_or_create_party(contact: dict, company: str | None):
-	"""Match an existing Customer, else an existing Lead, else create a Lead.
+@frappe.whitelist()
+def qualify_inquiry(
+	ticket: str,
+	customer: str = "",
+	lead: str = "",
+	create_lead: int = 0,
+	lead_name: str = "",
+	lead_company: str = "",
+	lead_email: str = "",
+	lead_phone: str = "",
+	project: str = "",
+	create_project: int = 0,
+	new_project_name: str = "",
+) -> dict:
+	"""Attach a party and a project to a ticket, creating either on request.
+
+	This is the human half of intake. ``ingest_inquiry_email`` links only what it
+	could match exactly; everything else waits here until a sales engineer who
+	has read the mail decides what the customer and project actually are.
+
+	Creates nothing speculatively: a Lead is opened only when ``create_lead`` is
+	set, a Project only when ``create_project`` is set, and the values used are
+	the ones the engineer confirmed in the dialog rather than whatever the model
+	extracted. Runs in one transaction, so a failure part-way leaves the ticket
+	untouched.
+
+	Does NOT create the Opportunity. Kayan's Opportunity carries mandatory
+	commercial fields -- contractor, consultant, owner/end user, project sector,
+	scope of supply -- whose field definitions live in the site, not in this app.
+	Rebuilding them in a dialog would duplicate validation we do not own and
+	would drift the moment someone customises the form. The caller instead opens
+	a real Opportunity form prefilled from the return value, so ERPNext renders
+	and validates its own fields.
+
+	Returns the resolved links plus an ``opportunity`` prefill dict.
+	"""
+	if not frappe.has_permission("Inquiry Ticket", "write", ticket):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	doc = frappe.get_doc("Inquiry Ticket", ticket)
+	create_lead = int(create_lead or 0)
+	create_project = int(create_project or 0)
+
+	# ---- Party --------------------------------------------------------------
+	customer = (customer or "").strip() or doc.customer
+	lead = (lead or "").strip() or doc.lead
+
+	if create_lead:
+		if customer:
+			frappe.throw(_("This inquiry is already linked to a Customer; a Lead would duplicate it."))
+		name = (lead_name or "").strip() or (lead_company or "").strip()
+		if not name:
+			frappe.throw(_("A Lead needs a contact name or a company name."))
+		lead_doc = frappe.get_doc(
+			{
+				"doctype": "Lead",
+				"lead_name": name,
+				"company_name": (lead_company or "").strip(),
+				"email_id": _normalise(lead_email) or "",
+				"phone": (lead_phone or "").strip(),
+				"status": "Open",
+			}
+		)
+		lead_doc.insert()
+		lead = lead_doc.name
+
+	# ---- Project ------------------------------------------------------------
+	project = (project or "").strip() or doc.project
+	project_method = doc.project_match_method
+
+	if create_project:
+		name = (new_project_name or "").strip()
+		if not name:
+			frappe.throw(_("A Project needs a name."))
+		# Guard against the duplicate this whole change exists to prevent: if the
+		# name the engineer typed already matches an existing Project, link that
+		# one instead of opening a second row for the same job.
+		existing, _method = _match_project(name)
+		if existing:
+			project, project_method = existing, "Exact"
+		else:
+			proj = frappe.get_doc(
+				{
+					"doctype": "Project",
+					"project_name": name,
+					"status": "Open",
+					"is_active": "Yes",
+					"company": doc.company or _default_company(),
+					"customer": customer or None,
+				}
+			)
+			proj.insert()
+			project, project_method = proj.name, "Created"
+	elif project and project != doc.project:
+		project_method = "Manual"
+
+	# ---- Write back ---------------------------------------------------------
+	doc.customer = customer or None
+	doc.lead = lead or None
+	doc.project = project or None
+	doc.project_match_method = project_method or "Unmatched"
+	if create_lead or (customer and customer != frappe.db.get_value("Inquiry Ticket", ticket, "customer")):
+		doc.customer_match_method = "Manual"
+	doc.save()
+
+	create_audit_event(
+		entity_type="Inquiry Ticket",
+		entity_id=ticket,
+		action="Inquiry Qualified",
+		details=(
+			f"customer={customer or '-'}; lead={lead or '-'}; project={project or '-'}; "
+			f"lead_created={bool(create_lead)}; project_created={project_method == 'Created'}"
+		),
+	)
+
+	return {
+		"ticket": ticket,
+		"customer": customer or None,
+		"lead": lead or None,
+		"project": project or None,
+		"project_match_method": doc.project_match_method,
+		"opportunity": {
+			"opportunity_from": "Customer" if customer else ("Lead" if lead else None),
+			"party_name": customer or lead or None,
+			"company": doc.company,
+			"opportunity_owner": doc.sales_engineer,
+			"custom_project": project or None,
+			"custom_inquiry_ticket": ticket,
+			"contact_email": doc.contact_email,
+		},
+	}
+
+
+def _match_party(contact: dict, company: str | None):
+	"""Match an existing Customer, else an existing Lead. Creates nothing.
+
+	Returns ``(customer, lead, method)`` where method records how the match was
+	reached, so the form can show why a ticket is linked the way it is.
 
 	Matching is by EMAIL first. Names are unreliable here: the same person is
 	transliterated differently between the From display name and the body
 	signature ("Eng.Treiz Abdel Meseeh" vs "Eng. Teriza Abd El Maseeh"), which is
 	common for Arabic-origin names.
+
+	Intake deliberately does NOT create a Lead. A Lead invented from one inbound
+	email is a guess the sales engineer has to clean up later, and the engineer
+	is about to look at the ticket anyway -- see qualify_inquiry, which creates
+	the Lead from values a human confirmed.
 	"""
 	email = _normalise(contact.get("email"))
 	company_name = (contact.get("company_name") or "").strip()
@@ -768,30 +908,19 @@ def _match_or_create_party(contact: dict, company: str | None):
 	if email:
 		customer = frappe.db.get_value("Customer", {"email_id": email}, "name")
 		if customer:
-			return customer, None
+			return customer, None, "Email Address"
 
 	if company_name:
 		customer = frappe.db.get_value("Customer", {"customer_name": company_name}, "name")
 		if customer:
-			return customer, None
+			return customer, None, "Company Name"
 
 	if email:
 		lead = frappe.db.get_value("Lead", {"email_id": email}, "name")
 		if lead:
-			return None, lead
+			return None, lead, "Email Address"
 
-	lead_doc = frappe.get_doc(
-		{
-			"doctype": "Lead",
-			"lead_name": _full_name(contact) or email or "Unknown",
-			"company_name": company_name,
-			"email_id": email or "",
-			"phone": _first_phone(contact) or "",
-			"status": "Open",
-		}
-	)
-	lead_doc.insert(ignore_permissions=True)
-	return None, lead_doc.name
+	return None, None, "Unmatched"
 
 
 def _normalise_project_name(raw) -> str:
@@ -806,13 +935,20 @@ def _normalise_project_name(raw) -> str:
 	return re.sub(r"[^a-z0-9]+", "", (raw or "").lower())
 
 
-def _match_or_create_project(project_name, customer=None, company=None):
-	"""Resolve an extracted project name to a Project, creating one if needed.
+def _match_project(project_name):
+	"""Resolve an extracted project name to an existing Project. Creates nothing.
 
-	Returns ``(project, method)`` where method is Exact, Created or Unmatched, so
-	the ticket records how the link was arrived at. 'Created' is the one worth
-	auditing: a near-miss on the name opens a duplicate Project rather than
-	joining the existing one.
+	Returns ``(project, method)`` where method is Exact or Unmatched.
+
+	Matching is on a normalised key rather than the raw string, because Kayan's
+	Project master is hand-entered and inconsistent -- one live record is
+	literally ``"G3 MALL "`` with a trailing space -- while the extracted name
+	comes off a subject line.
+
+	Creation deliberately lives in qualify_inquiry, not here. An automatic
+	create turned every near-miss into a duplicate Project: "Parcel 06&07" and
+	"Parcel 6&7" are one project to a human and two rows to a normaliser, and
+	only the engineer reading the mail can tell which it is.
 	"""
 	name = (project_name or "").strip()
 	if not name:
@@ -826,64 +962,7 @@ def _match_or_create_project(project_name, customer=None, company=None):
 		if _normalise_project_name(row.project_name) == key:
 			return row.name, "Exact"
 
-	# No match: open one. Project may carry mandatory customisations the way
-	# Opportunity does, and the same rule applies -- a CRM record must never cost
-	# us the inquiry, so this is best-effort and the caller tolerates None.
-	proj = frappe.get_doc(
-		{
-			"doctype": "Project",
-			"project_name": name,
-			"status": "Open",
-			"is_active": "Yes",
-			"company": company or _default_company(),
-			"customer": customer or None,
-		}
-	)
-	proj.flags.ignore_mandatory = True
-	proj.insert(ignore_permissions=True)
-	return proj.name, "Created"
-
-
-def _ensure_opportunity(customer, lead, company, owner_user=None, project=None):
-	"""Link an open Opportunity for the party, creating one when absent.
-
-	Kayan customise Opportunity with mandatory fields that only a human can
-	supply at qualification: contractor, consultant, owner/end user, project,
-	project sector and scope of supply are commercial facts, not something an
-	inbound RFQ carries. Intake therefore inserts a skeleton with
-	``ignore_mandatory`` and fills only what it can honestly know. Validation
-	still fires the moment a sales engineer opens the record and saves it, so
-	the completeness requirement moves to the person who can actually satisfy
-	it rather than blocking ingestion.
-	"""
-	party = customer or lead
-	if not party:
-		return None
-
-	party_type = "Customer" if customer else "Lead"
-	existing = frappe.db.get_value(
-		"Opportunity",
-		{"opportunity_from": party_type, "party_name": party, "status": "Open"},
-		"name",
-	)
-	if existing:
-		return existing
-
-	opp = frappe.get_doc(
-		{
-			"doctype": "Opportunity",
-			"opportunity_from": party_type,
-			"party_name": party,
-			"company": company,
-			"status": "Open",
-			# The custom mandatory fields intake can fill honestly.
-			"opportunity_owner": owner_user or None,
-			"custom_project": project or None,
-		}
-	)
-	opp.flags.ignore_mandatory = True
-	opp.insert(ignore_permissions=True)
-	return opp.name
+	return None, "Unmatched"
 
 
 def _build_line_items(items) -> list:

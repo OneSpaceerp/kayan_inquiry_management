@@ -290,7 +290,7 @@
    "fieldname": "customer_match_method",
    "fieldtype": "Select",
    "label": "Customer Match Method",
-   "options": "\nCompany Name\nEmail Domain\nEmail Address\nManual",
+   "options": "\nCompany Name\nEmail Domain\nEmail Address\nManual\nUnmatched",
    "read_only": 1,
    "description": "How the customer was matched (auto or manual)."
   },
@@ -305,7 +305,7 @@
    "fieldname": "project_match_method",
    "fieldtype": "Select",
    "label": "Project Match Method",
-   "options": "\nExact\nAI Suggested\nCreated\nUnmatched",
+   "options": "\nExact\nAI Suggested\nCreated\nManual\nUnmatched",
    "read_only": 1,
    "description": "How the Project was resolved. 'Created' means no existing Project matched and a new one was opened -- worth reviewing, since a near-miss creates a duplicate."
   },

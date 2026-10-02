@@ -421,6 +421,28 @@ def create_ai_processing_log(
 	return {"name": log.name, "status": log.status}
 
 
+def link_opportunity_to_inquiry(doc, method=None):
+	"""Write the Opportunity back onto the Inquiry Ticket it was qualified from.
+
+	The qualify flow hands the user a prefilled Opportunity form instead of
+	creating the record in code, so Kayan's mandatory commercial fields are
+	rendered and validated by ERPNext rather than duplicated in a dialog. The
+	consequence is that the Opportunity is saved outside our call stack, and the
+	ticket cannot be updated by the caller -- this hook closes that loop.
+
+	Uses db_set rather than save() to avoid recursing through Inquiry Ticket's
+	own validate/on_update, and never overwrites a link a human already set.
+	"""
+	ticket = doc.get("custom_inquiry_ticket")
+	if not ticket or not frappe.db.exists("Inquiry Ticket", ticket):
+		return
+
+	if frappe.db.get_value("Inquiry Ticket", ticket, "opportunity"):
+		return
+
+	frappe.db.set_value("Inquiry Ticket", ticket, "opportunity", doc.name, update_modified=False)
+
+
 def clean_opportunity_links(doc, method=None):
 	"""Hook function registered in hooks.py to clean up invalid Link fields before insert/validate."""
 	for field in doc.meta.fields:
